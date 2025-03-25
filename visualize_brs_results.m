@@ -87,6 +87,9 @@ for i = 1:length(plot_types)
             
         case 'comparison'
             generate_comparison_plots();
+
+        case 'velocity_stack'
+            generate_3d_velocity_stack();
             
         otherwise
             warning('Unknown plot type: %s', current_plot_type);
@@ -108,8 +111,8 @@ disp('Visualization complete!');
                 set(gcf, 'Position', [100, 100, 800, 600]);
                 
                 % Convert grid values from radians to degrees for plotting
-                xs1_deg = g.xs{1} * 180/pi;  % Convert sideslip angle to degrees
-                xs2_deg = g.xs{2} * 180/pi;  % Convert yaw rate to degrees
+                xs1_deg = g.xs{2} * 180/pi;  % Convert sideslip angle to degrees
+                xs2_deg = g.xs{1} * 180/pi;  % Convert yaw rate to degrees
                 
                 % Get the BRS data and control data for this combination
                 current_brs = all_data{v_idx, m_idx};
@@ -147,8 +150,8 @@ disp('Visualization complete!');
                 grid minor;
                 
                 % Calculate axis limits
-                x_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
-                y_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
                 
                 % Set axis limits
                 xlim(x_limits);
@@ -178,12 +181,12 @@ disp('Visualization complete!');
                 set(gcf, 'Position', [100, 100, 900, 700]);
                 
                 % Convert grid values from radians to degrees for plotting
-                xs1_deg = g.xs{1} * 180/pi;  % Convert sideslip angle to degrees
-                xs2_deg = g.xs{2} * 180/pi;  % Convert yaw rate to degrees
+                xs1_deg = g.xs{2} * 180/pi;  % Convert sideslip angle to degrees
+                xs2_deg = g.xs{1} * 180/pi;  % Convert yaw rate to degrees
                 
                 % Calculate axis limits
-                x_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
-                y_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
                 
                 % Get the control data for this combination
                 current_control = control_data{v_idx, m_idx};
@@ -241,7 +244,7 @@ disp('Visualization complete!');
                 subplot(2, 2, 3:4);
                 
                 % Plot the value function as a surface
-                surf(xs1_deg, xs2_deg, current_brs', 'EdgeColor', 'none');
+                surf(xs1_deg, xs2_deg, current_brs, 'EdgeColor', 'none');
                 colormap(gca, parula);
                 
                 % Adjust view angle
@@ -249,7 +252,7 @@ disp('Visualization complete!');
                 
                 % Add the zero level set (BRS boundary)
                 hold on;
-                [~, h_brs] = contour3(xs1_deg, xs2_deg, current_brs', [0 0], 'LineWidth', 2, 'Color', 'r');
+                [~, h_brs] = contour3(xs1_deg, xs2_deg, current_brs, [0 0], 'LineWidth', 2, 'Color', 'r');
                 
                 % Add colorbar and labels
                 cb = colorbar;
@@ -276,6 +279,83 @@ disp('Visualization complete!');
         end
     end
 
+%% Nested function to generate 3D plots showing BRSs for different speeds
+    function generate_3d_velocity_stack()
+        disp('Generating velocity stack...');
+        
+        % Comparison of different velocities (if applicable)
+        if length(velocities) > 1
+            % Compare BRS for different velocities with the same Mzmax
+            for m_idx = 1:length(mzmax_values)
+                figure('Name', sprintf('Velocity Comparison - Mz=%d', mzmax_values(m_idx)));
+                clf;
+                
+                % Create a larger figure
+                set(gcf, 'Position', [100, 100, 800, 600]);
+                
+                % Convert grid values from radians to degrees for plotting
+                xs1_deg = g.xs{2} * 180/pi;
+                xs2_deg = g.xs{1} * 180/pi;
+                
+                % Calculate axis limits
+                x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
+                
+                % Plot target set
+                [~, h_target] = contour(xs1_deg, xs2_deg, data0, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                hold on;
+                
+                % Create color map for different velocities
+                vel_colors = jet(length(velocities));
+                
+                % Plot BRS boundary for each velocity
+                h_brs = zeros(length(velocities), 1);
+                for v_idx = 1:length(velocities)
+                    [~, h_brs(v_idx)] = contour3(xs1_deg, xs2_deg, ...
+                        (all_data{v_idx, m_idx}) + velocities(v_idx), ...
+                        [velocities(v_idx) velocities(v_idx)], ...
+                        'LineWidth', 2, 'Color', vel_colors(v_idx,:));
+                    contour3(xs1_deg, xs2_deg, data0 + velocities(v_idx), ...
+                        [velocities(v_idx) velocities(v_idx)], ...
+                        'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                end
+                
+                % Create legend
+                legend_entries = cell(length(velocities) + 1, 1);
+                for v_idx = 1:length(velocities)
+                    legend_entries{v_idx} = sprintf('v = %d m/s', velocities(v_idx));
+                end
+                legend_entries{end} = 'Target Set';
+                
+                % Add labels, title and legend
+                grid on;
+                xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
+                ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
+                title(sprintf('BRS Comparison for Different Velocities (Mzmax = %d N·m)', ...
+                      mzmax_values(m_idx)), 'FontSize', 14, 'FontWeight', 'bold');
+                legend([h_brs; h_target], legend_entries, 'Location', 'best', 'FontSize', 10);
+                
+                % Add a better grid
+                grid minor;
+                
+                % Set axis limits
+                xlim(x_limits);
+                ylim(y_limits);
+                zlim([0 50])
+
+                view([-30 30]);
+                
+                % Save figure if enabled
+                if opts.saveFigs
+                    fig_filename = sprintf('velocity_comparison_mz%d.%s', ...
+                        mzmax_values(m_idx), opts.figFormat);
+                    saveas(gcf, fullfile(fig_folder, fig_filename));
+                    fprintf('Saved velocity comparison plot to %s\n', fullfile(fig_folder, fig_filename));
+                end
+            end
+        end
+    end
+
 %% Nested function to generate comparison plots across different parameters
     function generate_comparison_plots()
         disp('Generating comparison plots...');
@@ -291,12 +371,12 @@ disp('Visualization complete!');
                 set(gcf, 'Position', [100, 100, 800, 600]);
                 
                 % Convert grid values from radians to degrees for plotting
-                xs1_deg = g.xs{1} * 180/pi;
-                xs2_deg = g.xs{2} * 180/pi;
+                xs1_deg = g.xs{2} * 180/pi;
+                xs2_deg = g.xs{1} * 180/pi;
                 
                 % Calculate axis limits
-                x_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
-                y_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
                 
                 % Plot target set
                 [~, h_target] = contour(xs1_deg, xs2_deg, data0, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
@@ -355,12 +435,12 @@ disp('Visualization complete!');
                 set(gcf, 'Position', [100, 100, 800, 600]);
                 
                 % Convert grid values from radians to degrees for plotting
-                xs1_deg = g.xs{1} * 180/pi;
-                xs2_deg = g.xs{2} * 180/pi;
+                xs1_deg = g.xs{2} * 180/pi;
+                xs2_deg = g.xs{1} * 180/pi;
                 
                 % Calculate axis limits
-                x_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
-                y_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
                 
                 % Plot target set
                 [~, h_target] = contour(xs1_deg, xs2_deg, data0, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
@@ -410,79 +490,83 @@ disp('Visualization complete!');
         
         % Time evolution visualization (for the first velocity and Mzmax combination)
         % Show how the BRS evolves over time
-        v_idx = 1;
-        m_idx = 1;
+
+        for v_idx=1:length(velocities)
+            for m_idx=1:length(mzmax_values)
+                
+                if ~isempty(all_data_full) && ~isempty(all_data_full{v_idx, m_idx})
+                    figure('Name', 'BRS Time Evolution');
+                    clf;
+                    
+                    % Create a larger figure
+                    set(gcf, 'Position', [100, 100, 800, 600]);
+                    
+                    % Convert grid values from radians to degrees for plotting
+                    xs1_deg = g.xs{2} * 180/pi;
+                    xs2_deg = g.xs{1} * 180/pi;
+                    
+                    % Calculate axis limits
+                    x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                    y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
+                    
+                    % Get full time evolution data
+                    full_data = all_data_full{v_idx, m_idx};
+                    
+                    hold on;
+                    
+                    % Select a subset of time points to visualize (to avoid clutter)
+                    num_time_points = size(full_data, 3);
+                    if num_time_points > 6
+                        time_indices = round(linspace(2, num_time_points, 5));
+                    else
+                        time_indices = 2:num_time_points;
+                    end
+                    
+                    % Create color map for different time points
+                    time_colors = winter(length(time_indices));
+                    
+                    % Plot BRS boundary for each time point
+                    h_time = zeros(length(time_indices), 1);
+                    for t_idx = 1:length(time_indices)
+                        time_point = time_indices(t_idx);
+                        [~, h_time(t_idx)] = contour(xs1_deg, xs2_deg, full_data(:,:,time_point), [0 0], ...
+                            'LineWidth', 2, 'Color', time_colors(t_idx,:));
+                    end
+                    
+                    % Create legend
+                    legend_entries = cell(length(time_indices) + 1, 1);
+                    for t_idx = 1:length(time_indices)
+                        legend_entries{t_idx} = sprintf('t = %.2f s', tau(time_indices(t_idx)));
+                    end
+                    legend_entries{end} = 'Target Set';
         
-        if ~isempty(all_data_full) && ~isempty(all_data_full{v_idx, m_idx})
-            figure('Name', 'BRS Time Evolution');
-            clf;
-            
-            % Create a larger figure
-            set(gcf, 'Position', [100, 100, 800, 600]);
-            
-            % Convert grid values from radians to degrees for plotting
-            xs1_deg = g.xs{1} * 180/pi;
-            xs2_deg = g.xs{2} * 180/pi;
-            
-            % Calculate axis limits
-            x_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
-            y_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
-            
-            % Get full time evolution data
-            full_data = all_data_full{v_idx, m_idx};
-            
-            % Plot target set
-            [~, h_target] = contour(xs1_deg, xs2_deg, data0, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
-            hold on;
-            
-            % Select a subset of time points to visualize (to avoid clutter)
-            num_time_points = size(full_data, 3);
-            if num_time_points > 5
-                time_indices = round(linspace(1, num_time_points, 5));
-            else
-                time_indices = 1:num_time_points;
-            end
-            
-            % Create color map for different time points
-            time_colors = winter(length(time_indices));
-            
-            % Plot BRS boundary for each time point
-            h_time = zeros(length(time_indices), 1);
-            for t_idx = 1:length(time_indices)
-                time_point = time_indices(t_idx);
-                [~, h_time(t_idx)] = contour(xs1_deg, xs2_deg, full_data(:,:,time_point), [0 0], ...
-                    'LineWidth', 2, 'Color', time_colors(t_idx,:));
-            end
-            
-            % Create legend
-            legend_entries = cell(length(time_indices) + 1, 1);
-            for t_idx = 1:length(time_indices)
-                legend_entries{t_idx} = sprintf('t = %.2f s', tau(time_indices(t_idx)));
-            end
-            legend_entries{end} = 'Target Set';
-            
-            % Add labels, title and legend
-            grid on;
-            xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
-            ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
-            title(sprintf('BRS Time Evolution (v = %d m/s, Mzmax = %d N·m)', ...
-                  velocities(v_idx), mzmax_values(m_idx)), 'FontSize', 14, 'FontWeight', 'bold');
-            legend([h_time; h_target], legend_entries, 'Location', 'best', 'FontSize', 10);
-            
-            % Add a better grid
-            grid minor;
-            
-            % Set axis limits
-            xlim(x_limits);
-            ylim(y_limits);
-            
-            % Save figure if enabled
-            if opts.saveFigs
-                fig_filename = sprintf('time_evolution_v%d_mz%d.%s', ...
-                    velocities(v_idx), mzmax_values(m_idx), opts.figFormat);
-                saveas(gcf, fullfile(fig_folder, fig_filename));
-                fprintf('Saved time evolution plot to %s\n', fullfile(fig_folder, fig_filename));
-            end
+                    % Plot target set
+                    [~, h_target] = contour(xs1_deg, xs2_deg, data0, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+        
+                    % Add labels, title and legend
+                    grid on;
+                    xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
+                    ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
+                    title(sprintf('BRS Time Evolution (v = %d m/s, Mzmax = %d N·m)', ...
+                          velocities(v_idx), mzmax_values(m_idx)), 'FontSize', 14, 'FontWeight', 'bold');
+                    legend([h_time; h_target], legend_entries, 'Location', 'best', 'FontSize', 10);
+                    
+                    % Add a better grid
+                    grid minor;
+                    
+                    % Set axis limits
+                    xlim(x_limits);
+                    ylim(y_limits);
+                    
+                    % Save figure if enabled
+                    if opts.saveFigs
+                        fig_filename = sprintf('time_evolution_v%d_mz%d.%s', ...
+                            velocities(v_idx), mzmax_values(m_idx), opts.figFormat);
+                        saveas(gcf, fullfile(fig_folder, fig_filename));
+                        fprintf('Saved time evolution plot to %s\n', fullfile(fig_folder, fig_filename));
+                    end
+                end
+            end        
         end
     end
 

@@ -7,24 +7,28 @@ function compute_brs_mzmax_wrapper()
 % The user can modify the parameter values below and run this script to
 % perform the entire computation and visualization pipeline.
 
+clear; clc;
+
 %% Select if you want to load or produce results
-generate_results = false;
+generate_results = true;
+visualize_results = true;
+save_plots = true;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
-velocities = [30];
+velocities = 5:1:45;
 
 % Maximum yaw moment values to test (N·m)
-mzmax_values = [5000];
+mzmax_values = [0, 3000];
 
 % Maximum simulation time (seconds)
-tMax = 0.5;
+tMax = 1.0;
 
 % Time step for computation (seconds) 
 dt = 0.05;
 
-% Grid dimensions [sideslip, yaw rate]
-gridSize = [51, 51];
+% Grid dimensions [yaw rate, side slip]
+gridSize = [71, 55];
 
 % Grid minimum values (radians)
 gridMin = [deg2rad(-150), deg2rad(-25)];
@@ -51,14 +55,18 @@ if generate_results
         'uMode', uMode);
 else
     folder_base = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-    result_folder = strcat(folder_base, 'brs_results_20250325_111921_vx10-30_mz1-5000');
+    result_folder = strcat(folder_base, 'brs_results_20250325_163144_vx5-45_mz3000-3000');
+end
 %% Visualize results
-disp('Computation complete. Starting visualization...');
-visualize_brs_results(result_folder, ...
-    'plotType', {'control', 'detailed', 'comparison'}, ...
-    'saveFigs', true, ...
-    'figFormat', 'png');
+if visualize_results
+    disp('Computation complete. Starting visualization...');
+    visualize_brs_results(result_folder, ...
+        'plotType', {'velocity_stack'}, ...
+        'saveFigs', save_plots, ...
+        'figFormat', 'png');
 
-disp('All processing completed successfully!');
-disp(['Results saved to: ', result_folder]);
+    disp('All processing completed successfully!');
+    disp(['Results saved to: ', result_folder]);
+end
+
 end
