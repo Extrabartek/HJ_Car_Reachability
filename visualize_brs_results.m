@@ -301,8 +301,6 @@ disp('Visualization complete!');
                 x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
                 y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
                 
-                % Plot target set
-                [~, h_target] = contour(xs1_deg, xs2_deg, data0, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
                 hold on;
                 
                 % Create color map for different velocities
@@ -333,7 +331,7 @@ disp('Visualization complete!');
                 ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
                 title(sprintf('BRS Comparison for Different Velocities (Mzmax = %d N·m)', ...
                       mzmax_values(m_idx)), 'FontSize', 14, 'FontWeight', 'bold');
-                legend([h_brs; h_target], legend_entries, 'Location', 'best', 'FontSize', 10);
+                % legend([h_brs; h_target], legend_entries, 'Location', 'best', 'FontSize', 10);
                 
                 % Add a better grid
                 grid minor;

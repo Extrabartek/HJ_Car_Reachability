@@ -10,7 +10,7 @@ function compute_brs_mzmax_wrapper()
 clear; clc;
 
 %% Select if you want to load or produce results
-generate_results = true;
+generate_results = false;
 visualize_results = true;
 save_plots = true;
 
@@ -55,7 +55,7 @@ if generate_results
         'uMode', uMode);
 else
     folder_base = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-    result_folder = strcat(folder_base, 'brs_results_20250325_163144_vx5-45_mz3000-3000');
+    result_folder = strcat(folder_base, 'brs_results_20250325_172259_vx5-45_mz0-3000');
 end
 %% Visualize results
 if visualize_results
