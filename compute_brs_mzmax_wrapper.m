@@ -7,21 +7,24 @@ function compute_brs_mzmax_wrapper()
 % The user can modify the parameter values below and run this script to
 % perform the entire computation and visualization pipeline.
 
+%% Select if you want to load or produce results
+generate_results = false;
+
 %% Define computation parameters
 % Velocity values to test (m/s)
-velocities = [15, 30, 45];
+velocities = [30];
 
 % Maximum yaw moment values to test (N·m)
-mzmax_values = [5000, 10000];
+mzmax_values = [5000];
 
 % Maximum simulation time (seconds)
-tMax = 1.0;
+tMax = 0.5;
 
 % Time step for computation (seconds) 
 dt = 0.05;
 
 % Grid dimensions [sideslip, yaw rate]
-gridSize = [71, 71];
+gridSize = [51, 51];
 
 % Grid minimum values (radians)
 gridMin = [deg2rad(-150), deg2rad(-25)];
@@ -30,22 +33,25 @@ gridMin = [deg2rad(-150), deg2rad(-25)];
 gridMax = [deg2rad(150), deg2rad(25)];
 
 % Size of target set (radians)
-targetSize = [deg2rad(15), deg2rad(6)];
+targetSize = [deg2rad(10), deg2rad(4)];
 
 % Control mode ('min' for target reaching, 'max' for target avoidance)
 uMode = 'min';
 
-%% Run BRS computation
-disp('Starting BRS computation...');
-result_folder = compute_brs_mzmax(velocities, mzmax_values, ...
-    'tMax', tMax, ...
-    'dt', dt, ...
-    'gridSize', gridSize, ...
-    'gridMin', gridMin, ...
-    'gridMax', gridMax, ...
-    'targetSize', targetSize, ...
-    'uMode', uMode);
-
+if generate_results
+    %% Run BRS computation
+    disp('Starting BRS computation...');
+    result_folder = compute_brs_mzmax(velocities, mzmax_values, ...
+        'tMax', tMax, ...
+        'dt', dt, ...
+        'gridSize', gridSize, ...
+        'gridMin', gridMin, ...
+        'gridMax', gridMax, ...
+        'targetSize', targetSize, ...
+        'uMode', uMode);
+else
+    folder_base = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
+    result_folder = strcat(folder_base, 'brs_results_20250325_111921_vx10-30_mz1-5000');
 %% Visualize results
 disp('Computation complete. Starting visualization...');
 visualize_brs_results(result_folder, ...
