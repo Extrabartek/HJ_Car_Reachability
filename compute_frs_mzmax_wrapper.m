@@ -17,10 +17,10 @@ save_plots = true;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
-velocities = 5:5:45;
+velocities = [30];
 
 % Maximum yaw moment values to test (N·m)
-mzmax_values = [0, 3000];
+mzmax_values = [15000];
 
 % Maximum simulation time (seconds)
 tMax = 1.0;
@@ -55,7 +55,7 @@ if generate_results
         'targetSize', targetSize, ...
         'uMode', uMode);
 else
-    folder_base = '/home/user/Documents/reachability/results/';
+    folder_base = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
     result_folder = strcat(folder_base, 'frs_results_last_run'); % Change to your actual folder
 end
 

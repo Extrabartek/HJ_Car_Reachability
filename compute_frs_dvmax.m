@@ -95,7 +95,7 @@ data0 = shapeRectangleByCenter(g, [0; 0; 0], target_size);
 
 %% Setup base parameters
 % Base parameters for steered model: [m, Vx, Lf, Lr, Iz, mu, dv_max, Cf, Cr]
-base_params = [1430; 50; 1.05; 1.61; 2059.2; 1; deg2rad(540); 90700; 109000];
+base_params = [1430; 50; 1.05; 1.61; 2059.2; 1; deg2rad(30); 90700; 109000];
 
 %% Store simulation parameters
 sim_params = struct();

@@ -18,10 +18,10 @@ save_plots = true;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
-velocities = [20, 30];
+velocities = [30];
 
 % Maximum steering rate values to test (rad/s)
-dvmax_values = [deg2rad(10), deg2rad(20)];
+dvmax_values = [deg2rad(20)];
 
 % Maximum simulation time (seconds)
 tMax = 1.5;
@@ -30,23 +30,23 @@ tMax = 1.5;
 dt = 0.05;
 
 % Grid dimensions [gamma, beta, delta]
-gridSize = [61, 51, 31];
+gridSize = [101, 101, 61];
 
 % Grid minimum values (radians)
-gridMin = [deg2rad(-150), deg2rad(-25), deg2rad(-10)];
+gridMin = [deg2rad(-150), deg2rad(-25), deg2rad(-20)];
 
 % Grid maximum values (radians)
-gridMax = [deg2rad(150), deg2rad(25), deg2rad(10)];
+gridMax = [deg2rad(150), deg2rad(25), deg2rad(20)];
 
 % Size of target set (radians)
-targetSize = [deg2rad(15), deg2rad(6), deg2rad(5)];
+targetSize = [deg2rad(15), deg2rad(6), deg2rad(1)];
 
 % Control mode ('max' for forward reachability)
 uMode = 'max';
 
 %% Path to load existing results (if not generating new ones)
-path_to_results_folder = '/home/user/Documents/reachability/results/';
-existing_result_folder = ''; % Fill in if you want to use existing results
+path_to_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
+existing_result_folder = strcat(path_to_results_folder, 'frs_results_last_run'); % Fill in if you want to use existing results
 
 if generate_results
     %% Run FRS computation
