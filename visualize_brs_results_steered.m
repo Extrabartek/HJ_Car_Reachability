@@ -126,7 +126,10 @@ disp('Visualization complete!');
                     velocities(v_idx), dvmax_values(d_idx)*180/pi));
                 
                 % Position the figure
-                set(gcf, 'Position', [100, 100, 1000, 300*length(slice_indices)]);
+                set(gcf, 'Position', [100, 100, 300*length(slice_indices), 1000]);
+
+                % Center index to find the target
+                center_slice_idx = ceil(size(g.xs{3}, 3) / 2);
                 
                 % Create one subplot for each steering angle slice
                 for s = 1:length(slice_indices)
@@ -135,18 +138,19 @@ disp('Visualization complete!');
                     
                     % Extract 2D slice
                     brs_slice = squeeze(current_brs(:,:,slice_idx));
-                    target_slice = squeeze(data0(:,:,slice_idx));
+                    target_slice = squeeze(data0(:,:,center_slice_idx));
                     control_slice = squeeze(current_control(:,:,slice_idx));
                     
                     % Create subplot
-                    subplot(length(slice_indices), 1, s);
+                    subplot(1, length(slice_indices), s);
                     
                     % Convert grid values from radians to degrees for plotting
                     xs1_deg = g.xs{1}(:,:,1) * 180/pi;  % Convert yaw rate to degrees
                     xs2_deg = g.xs{2}(:,:,1) * 180/pi;  % Convert sideslip angle to degrees
                     
                     % Plot control input with colored background
-                    control_plot = pcolor(xs1_deg, xs2_deg, control_slice);
+                    % FIXED: Swapped xs2_deg and xs1_deg to get sideslip on x-axis and yaw rate on y-axis
+                    control_plot = pcolor(xs2_deg, xs1_deg, control_slice);
                     control_plot.EdgeColor = 'none';
                     colormap(gca, custom_cmap);
                     
@@ -158,14 +162,17 @@ disp('Visualization complete!');
                     hold on;
                     
                     % Plot BRS boundary
-                    [~, h_brs] = contour(xs1_deg, xs2_deg, brs_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
+                    % FIXED: Swapped xs2_deg and xs1_deg
+                    [~, h_brs] = contour(xs2_deg, xs1_deg, brs_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
                     
                     % Plot target set
-                    [~, h_target] = contour(xs1_deg, xs2_deg, target_slice, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                    % FIXED: Swapped xs2_deg and xs1_deg
+                    [~, h_target] = contour(xs2_deg, xs1_deg, target_slice, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
                     
                     % Add labels, title, and legend
-                    xlabel('Yaw Rate (deg/s)', 'FontSize', 12);
-                    ylabel('Sideslip Angle (deg)', 'FontSize', 12);
+                    % FIXED: Swapped x and y axis labels
+                    xlabel('Sideslip Angle (deg)', 'FontSize', 12);
+                    ylabel('Yaw Rate (deg/s)', 'FontSize', 12);
                     title(sprintf('Steering Angle = %.1f°', delta_val*180/pi), 'FontSize', 14);
                     legend([h_brs, h_target], 'BRS Boundary', 'Target Set', 'Location', 'best');
                     
@@ -173,8 +180,9 @@ disp('Visualization complete!');
                     grid on;
                     
                     % Calculate axis limits
-                    x_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
-                    y_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                    % FIXED: Swapped x and y limits
+                    x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                    y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
                     
                     % Set axis limits
                     xlim(x_limits);
@@ -204,7 +212,7 @@ disp('Visualization complete!');
         delta_values = g.xs{3}(1, 1, :);
         
         % Use center slice for detailed plots
-        center_slice_idx = ceil(size(g.xs{3}, 1) / 2);
+        center_slice_idx = ceil(size(g.xs{3}, 3) / 2);
         delta_val = delta_values(center_slice_idx);
         
         for v_idx = 1:length(velocities)
@@ -230,29 +238,33 @@ disp('Visualization complete!');
                 xs2_deg = g.xs{2}(:,:,1) * 180/pi;  % Convert sideslip angle to degrees
                 
                 % Calculate axis limits
-                x_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
-                y_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                % FIXED: Swapped x and y limits
+                x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
                 
                 % 1. Control Input Visualization
                 subplot(2, 2, 1);
                 
                 % Create a pcolor plot with the custom colormap
-                control_plot = pcolor(xs1_deg, xs2_deg, control_slice);
+                % FIXED: Swapped xs2_deg and xs1_deg
+                control_plot = pcolor(xs2_deg, xs1_deg, control_slice);
                 control_plot.EdgeColor = 'none';
                 colormap(gca, custom_cmap);
                 caxis([-dvmax_values(d_idx), dvmax_values(d_idx)]);
                 
                 % Add contour of BRS boundary
                 hold on;
-                [~, h_brs] = contour(xs1_deg, xs2_deg, brs_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
+                % FIXED: Swapped xs2_deg and xs1_deg
+                [~, h_brs] = contour(xs2_deg, xs1_deg, brs_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
                 
                 % Add colorbar and labels
                 cb = colorbar;
                 title(cb, 'Steering Rate (rad/s)');
                 
                 title('Optimal Control Input', 'FontSize', 12);
-                ylabel('Sideslip Angle (deg)', 'FontSize', 10);
-                xlabel('Yaw Rate (deg/s)', 'FontSize', 10);
+                % FIXED: Swapped x and y axis labels
+                xlabel('Sideslip Angle (deg)', 'FontSize', 10);
+                ylabel('Yaw Rate (deg/s)', 'FontSize', 10);
                 xlim(x_limits);
                 ylim(y_limits);
                 grid on;
@@ -261,21 +273,25 @@ disp('Visualization complete!');
                 subplot(2, 2, 2);
                 
                 % Plot BRS boundary
-                [~, h_brs] = contour(xs1_deg, xs2_deg, brs_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
+                % FIXED: Swapped xs2_deg and xs1_deg
+                [~, h_brs] = contour(xs2_deg, xs1_deg, brs_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
                 hold on;
                 
                 % Plot target set
-                [~, h_target] = contour(xs1_deg, xs2_deg, target_slice, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                % FIXED: Swapped xs2_deg and xs1_deg
+                [~, h_target] = contour(xs2_deg, xs1_deg, target_slice, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
                 
                 % Find and plot the control switching surface
                 % For 3D BRS, need to extract 2D derivatives
                 derivs = extract2DCostates(g, brs_slice);
                 switching_condition = derivs{2};  % The derivative w.r.t. delta
-                [~, h_switch] = contour(xs1_deg, xs2_deg, switching_condition, [0 0], 'LineWidth', 1.5, 'Color', 'r', 'LineStyle', '-.'); 
+                % FIXED: Swapped xs2_deg and xs1_deg
+                [~, h_switch] = contour(xs2_deg, xs1_deg, switching_condition, [0 0], 'LineWidth', 1.5, 'Color', 'r', 'LineStyle', '-.'); 
                 
                 title('BRS Boundary and Control Switching Surface', 'FontSize', 12);
-                ylabel('Sideslip Angle (deg)', 'FontSize', 10);
-                xlabel('Yaw Rate (deg/s)', 'FontSize', 10);
+                % FIXED: Swapped x and y axis labels
+                xlabel('Sideslip Angle (deg)', 'FontSize', 10);
+                ylabel('Yaw Rate (deg/s)', 'FontSize', 10);
                 legend([h_brs, h_target, h_switch], 'BRS Boundary', 'Target Set', 'Control Switching', 'Location', 'best', 'FontSize', 8);
                 xlim(x_limits);
                 ylim(y_limits);
@@ -285,7 +301,8 @@ disp('Visualization complete!');
                 subplot(2, 2, 3:4);
                 
                 % Plot the value function as a surface
-                surf(xs1_deg, xs2_deg, brs_slice, 'EdgeColor', 'none');
+                % FIXED: Swapped xs2_deg and xs1_deg
+                surf(xs2_deg, xs1_deg, brs_slice, 'EdgeColor', 'none');
                 colormap(gca, parula);
                 
                 % Adjust view angle
@@ -293,15 +310,17 @@ disp('Visualization complete!');
                 
                 % Add the zero level set (BRS boundary)
                 hold on;
-                [~, h_brs] = contour3(xs1_deg, xs2_deg, brs_slice, [0 0], 'LineWidth', 2, 'Color', 'r');
+                % FIXED: Swapped xs2_deg and xs1_deg
+                [~, h_brs] = contour3(xs2_deg, xs1_deg, brs_slice, [0 0], 'LineWidth', 2, 'Color', 'r');
                 
                 % Add colorbar and labels
                 cb = colorbar;
                 title(cb, 'Value Function');
                 
                 title('Value Function Surface', 'FontSize', 12);
-                xlabel('Yaw Rate (deg/s)', 'FontSize', 10);
-                ylabel('Sideslip Angle (deg)', 'FontSize', 10);
+                % FIXED: Swapped x and y axis labels
+                xlabel('Sideslip Angle (deg)', 'FontSize', 10);
+                ylabel('Yaw Rate (deg/s)', 'FontSize', 10);
                 zlabel('Value', 'FontSize', 10);
                 grid on;
                 
@@ -328,7 +347,7 @@ disp('Visualization complete!');
         delta_values = g.xs{3}(1, 1, :);
         
         % Use center slice for comparisons
-        center_slice_idx = ceil(size(g.xs{3}, 1) / 2);
+        center_slice_idx = ceil(size(g.xs{3}, 3) / 2);
         delta_val = delta_values(center_slice_idx);
         
         % Comparison of different steering rates (if applicable)
@@ -347,14 +366,16 @@ disp('Visualization complete!');
                 xs2_deg = g.xs{2}(:,:,1) * 180/pi;
                 
                 % Calculate axis limits
-                x_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
-                y_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                % FIXED: Swapped x and y limits
+                x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
                 
                 % Extract target set slice
                 target_slice = squeeze(data0(:,:,center_slice_idx));
                 
                 % Plot target set
-                [~, h_target] = contour(xs1_deg, xs2_deg, target_slice, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                % FIXED: Swapped xs2_deg and xs1_deg
+                [~, h_target] = contour(xs2_deg, xs1_deg, target_slice, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
                 hold on;
                 
                 % Create color map for different steering rate values
@@ -366,7 +387,8 @@ disp('Visualization complete!');
                     % Extract BRS slice
                     brs_slice = squeeze(all_data{v_idx, d_idx}(:,:,center_slice_idx));
                     
-                    [~, h_brs(d_idx)] = contour(xs1_deg, xs2_deg, brs_slice, [0 0], ...
+                    % FIXED: Swapped xs2_deg and xs1_deg
+                    [~, h_brs(d_idx)] = contour(xs2_deg, xs1_deg, brs_slice, [0 0], ...
                         'LineWidth', 2, 'Color', dv_colors(d_idx,:));
                 end
                 
@@ -379,8 +401,9 @@ disp('Visualization complete!');
                 
                 % Add labels, title and legend
                 grid on;
-                xlabel('Yaw Rate (degrees/s)', 'FontSize', 12);
-                ylabel('Sideslip Angle (degrees)', 'FontSize', 12);
+                % FIXED: Swapped x and y axis labels
+                xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
+                ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
                 title(sprintf('BRS Comparison for Different Steering Rate Limits (v = %d m/s, δ = %.1f°)', ...
                       velocities(v_idx), delta_val*180/pi), 'FontSize', 14, 'FontWeight', 'bold');
                 legend([h_brs; h_target], legend_entries, 'Location', 'best', 'FontSize', 10);
@@ -418,14 +441,16 @@ disp('Visualization complete!');
                 xs2_deg = g.xs{2}(:,:,1) * 180/pi;
                 
                 % Calculate axis limits
-                x_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
-                y_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                % FIXED: Swapped x and y limits
+                x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
                 
                 % Extract target set slice
                 target_slice = squeeze(data0(:,:,center_slice_idx));
                 
                 % Plot target set
-                [~, h_target] = contour(xs1_deg, xs2_deg, target_slice, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                % FIXED: Swapped xs2_deg and xs1_deg
+                [~, h_target] = contour(xs2_deg, xs1_deg, target_slice, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
                 hold on;
                 
                 % Create color map for different velocities
@@ -437,7 +462,8 @@ disp('Visualization complete!');
                     % Extract BRS slice
                     brs_slice = squeeze(all_data{v_idx, d_idx}(:,:,center_slice_idx));
                     
-                    [~, h_brs(v_idx)] = contour(xs1_deg, xs2_deg, brs_slice, [0 0], ...
+                    % FIXED: Swapped xs2_deg and xs1_deg
+                    [~, h_brs(v_idx)] = contour(xs2_deg, xs1_deg, brs_slice, [0 0], ...
                         'LineWidth', 2, 'Color', vel_colors(v_idx,:));
                 end
                 
@@ -450,8 +476,9 @@ disp('Visualization complete!');
                 
                 % Add labels, title and legend
                 grid on;
-                xlabel('Yaw Rate (degrees/s)', 'FontSize', 12);
-                ylabel('Sideslip Angle (degrees)', 'FontSize', 12);
+                % FIXED: Swapped x and y axis labels
+                xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
+                ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
                 title(sprintf('BRS Comparison for Different Velocities (Max Steering Rate = %.1f°/s, δ = %.1f°)', ...
                       dvmax_values(d_idx)*180/pi, delta_val*180/pi), 'FontSize', 14, 'FontWeight', 'bold');
                 legend([h_brs; h_target], legend_entries, 'Location', 'best', 'FontSize', 10);
@@ -495,12 +522,15 @@ disp('Visualization complete!');
                 xs2_deg = g.xs{2}(:,:,1) * 180/pi;
                 
                 % Calculate axis limits
-                x_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
-                y_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                % FIXED: Swapped x and y limits
+                x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+                y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
                 
                 % Plot target set (use middle slice as reference)
-                target_slice = squeeze(data0(:,:,1));
-                [~, h_target] = contour(xs1_deg, xs2_deg, target_slice, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                center_slice_idx = ceil(size(g.xs{3}, 3) / 2);
+                target_slice = squeeze(data0(:,:,center_slice_idx));
+                % FIXED: Swapped xs2_deg and xs1_deg
+                [~, h_target] = contour(xs2_deg, xs1_deg, target_slice, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
                 hold on;
                 
                 % Create color map for different delta slices
@@ -518,20 +548,21 @@ disp('Visualization complete!');
                     % Extract BRS slice
                     brs_slice = squeeze(current_brs(:,:,slice_idx));
                     
-                    [~, h_brs(s)] = contour(xs1_deg, xs2_deg, brs_slice, [0 0], ...
+                    % FIXED: Swapped xs2_deg and xs1_deg
+                    [~, h_brs(s)] = contour(xs2_deg, xs1_deg, brs_slice, [0 0], ...
                         'LineWidth', 2, 'Color', delta_colors(s,:));
 
                     % Create legend entry
                     legend_entries{s} = sprintf('δ = %.1f°', delta_val*180/pi);
                 end
                 
-                
                 legend_entries{end} = 'Target Set';
                 
                 % Add labels, title and legend
                 grid on;
-                xlabel('Yaw Rate (degrees/s)', 'FontSize', 12);
-                ylabel('Sideslip Angle (degrees)', 'FontSize', 12);
+                % FIXED: Swapped x and y axis labels
+                xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
+                ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
                 title(sprintf('BRS Comparison for Different Steering Angles (v = %d m/s, Max Steering Rate = %.1f°/s)', ...
                       velocities(v_idx), dvmax_values(d_idx)*180/pi), 'FontSize', 14, 'FontWeight', 'bold');
                 legend([h_brs; h_target], legend_entries, 'Location', 'best', 'FontSize', 10);
