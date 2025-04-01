@@ -12,9 +12,10 @@ function compute_frs_dvmax_wrapper()
 clear; clc;
 
 %% Select if you want to load or produce results
-generate_results = true;
-visualize_results = true;
-save_plots = true;
+generate_results = false;
+visualize_results = false;
+save_plots = false;
+threed_plot = true;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
@@ -27,10 +28,10 @@ dvmax_values = [deg2rad(20)];
 tMax = 1.5;
 
 % Time step for computation (seconds) 
-dt = 0.05;
+dt = 0.01;
 
 % Grid dimensions [gamma, beta, delta]
-gridSize = [101, 101, 61];
+gridSize = [101, 101, 81];
 
 % Grid minimum values (radians)
 gridMin = [deg2rad(-150), deg2rad(-25), deg2rad(-20)];
@@ -46,7 +47,7 @@ uMode = 'max';
 
 %% Path to load existing results (if not generating new ones)
 path_to_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-existing_result_folder = strcat(path_to_results_folder, 'frs_results_last_run'); % Fill in if you want to use existing results
+existing_result_folder = 'steered_frs_results_20250401_150234_vx30-30_dvmax20-20'; % Fill in if you want to use existing results
 
 if generate_results
     %% Run FRS computation
@@ -78,6 +79,10 @@ if visualize_results
 
     disp('All processing completed successfully!');
     disp(['Results saved to: ', result_folder]);
+end
+
+if threed_plot
+    visualize_3d_reachable_sets(result_folder);
 end
 
 end

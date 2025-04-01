@@ -17,10 +17,10 @@ save_plots = true;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
-velocities = [30];
+velocities = [20,30];
 
 % Maximum yaw moment values to test (N·m)
-mzmax_values = [15000];
+mzmax_values = [10000,15000];
 
 % Maximum simulation time (seconds)
 tMax = 1.0;
