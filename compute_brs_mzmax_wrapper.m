@@ -16,13 +16,13 @@ save_plots = true;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
-velocities = 5:1:45;
+velocities = 5:2:45;
 
 % Maximum yaw moment values to test (N·m)
-mzmax_values = [0, 3000];
+mzmax_values = [10000];
 
 % Maximum simulation time (seconds)
-tMax = 1.0;
+tMax = 0.5;
 
 % Time step for computation (seconds) 
 dt = 0.05;
@@ -55,7 +55,7 @@ if generate_results
         'uMode', uMode);
 else
     folder_base = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-    result_folder = strcat(folder_base, 'brs_results_20250325_172259_vx5-45_mz0-3000');
+    result_folder = strcat(folder_base, 'brs_results_20250401_174533_vx5-45_mz10000-10000');
 end
 %% Visualize results
 if visualize_results

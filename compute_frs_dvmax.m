@@ -139,7 +139,7 @@ for v_idx = 1:length(velocities)
         % Put grid and dynamic systems into schemeData
         schemeData.grid = g;
         schemeData.dynSys = dCar;
-        schemeData.accuracy = 'high'; % Set accuracy
+        schemeData.accuracy = 'veryHigh'; % Set accuracy
         schemeData.uMode = opts.uMode;
         schemeData.tMode = 'forward'; % Set to forward for FRS calculation
         
@@ -148,6 +148,7 @@ for v_idx = 1:length(velocities)
         HJIextraArgs.visualize.initialValueSet = true;
         HJIextraArgs.visualize.figNum = 1;
         HJIextraArgs.visualize.deleteLastPlot = true;
+        % HJIextraArgs.lowMemory = true;
         
         % Solve HJ PDE to get forward reachable sets
         [data, tau2, extraOuts] = HJIPDE_solve(data0, tau, schemeData, 'set', HJIextraArgs);

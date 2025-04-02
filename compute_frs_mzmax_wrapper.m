@@ -11,19 +11,19 @@ function compute_frs_mzmax_wrapper()
 clear; clc;
 
 %% Select if you want to load or produce results
-generate_results = true;
+generate_results = false;
 visualize_results = true;
 save_plots = true;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
-velocities = [20,30];
+velocities = 5:2:45;
 
 % Maximum yaw moment values to test (N·m)
-mzmax_values = [10000,15000];
+mzmax_values = [10000];
 
 % Maximum simulation time (seconds)
-tMax = 1.0;
+tMax = 0.5;
 
 % Time step for computation (seconds) 
 dt = 0.05;
@@ -56,14 +56,14 @@ if generate_results
         'uMode', uMode);
 else
     folder_base = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-    result_folder = strcat(folder_base, 'frs_results_last_run'); % Change to your actual folder
+    result_folder = strcat(folder_base, 'frs_results_20250401_175003_vx5-45_mz10000-10000'); % Change to your actual folder
 end
 
 %% Visualize results
 if visualize_results
     disp('Computation complete. Starting visualization...');
     visualize_frs_results(result_folder, ... % Using FRS-specific visualization function
-        'plotType', {'velocity_stack', 'control', 'comparison'}, ...
+        'plotType', {'velocity_stack'}, ...
         'saveFigs', save_plots, ...
         'figFormat', 'png');
 

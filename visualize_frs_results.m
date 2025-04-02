@@ -333,6 +333,7 @@ disp('Visualization complete!');
                 grid on;
                 xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
                 ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
+                zlabel('Longitudinal Velocirt (m/s)', 'FontSize', 12);
                 title(sprintf('FRS Comparison for Different Velocities (Mzmax = %d N·m)', ...
                       mzmax_values(m_idx)), 'FontSize', 14, 'FontWeight', 'bold');
                 
