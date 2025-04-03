@@ -12,10 +12,10 @@ function compute_frs_dvmax_wrapper()
 clear; clc;
 
 %% Select if you want to load or produce results
-generate_results = true;
+generate_results = false;
 visualize_results = false;
 save_plots = false;
-threed_plot = false;
+threed_plot = true;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
@@ -31,13 +31,13 @@ tMax = 2.5;
 dt = 0.01;
 
 % Grid dimensions [gamma, beta, delta]
-gridSize = [151, 151, 101];
+gridSize = [141, 141, 71];
 
 % Grid minimum values (radians)
-gridMin = [deg2rad(-90), deg2rad(-20), deg2rad(-10)];
+gridMin = [deg2rad(-120), deg2rad(-25), deg2rad(-10)];
 
 % Grid maximum values (radians)
-gridMax = [deg2rad(90), deg2rad(20), deg2rad(10)];
+gridMax = [deg2rad(120), deg2rad(25), deg2rad(10)];
 
 % Size of target set (radians)
 targetSize = [deg2rad(15), deg2rad(3), deg2rad(1)];

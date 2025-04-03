@@ -126,8 +126,8 @@ for v_idx = 1:length(velocities)
     
     for m_idx = 1:length(mzmax_values)
         % Update the Mzmax and Mzmin parameters
-        params(7) = mzmax_values(m_idx);   % Mzmax
-        params(8) = -mzmax_values(m_idx);  % Mzmin (negative of Mzmax)
+        params(7) = -mzmax_values(m_idx);   % Mzmax
+        params(8) = mzmax_values(m_idx);  % Mzmin (negative of Mzmax)
         
         % Display progress
         fprintf('Computing BRS for velocity = %d m/s, Mzmax = %d N·m...\n', ...

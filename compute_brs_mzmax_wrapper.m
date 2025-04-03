@@ -10,16 +10,16 @@ function compute_brs_mzmax_wrapper()
 clear; clc;
 
 %% Select if you want to load or produce results
-generate_results = false;
+generate_results = true;
 visualize_results = true;
-save_plots = true;
+save_plots = false;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
-velocities = 5:2:45;
+velocities = [30];
 
 % Maximum yaw moment values to test (N·m)
-mzmax_values = [10000];
+mzmax_values = [0,30000];
 
 % Maximum simulation time (seconds)
 tMax = 0.5;

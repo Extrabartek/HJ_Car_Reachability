@@ -14,7 +14,7 @@ clear; clc;
 generate_results = false;
 visualize_results = false;
 save_plots = false;
-threed_plot = true;
+threed_plot = false;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
