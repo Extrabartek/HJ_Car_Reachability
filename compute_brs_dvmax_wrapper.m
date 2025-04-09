@@ -14,7 +14,7 @@ clear; clc;
 generate_results = false;
 visualize_results = false;
 save_plots = false;
-threed_plot = false;
+threed_plot = true;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
@@ -45,8 +45,10 @@ targetSize = [deg2rad(15), deg2rad(6), deg2rad(1)];
 uMode = 'min';
 
 %% Path to load existing results (if not generating new ones)
-path_to_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-existing_result_folder = strcat(path_to_results_folder,'steered_brs_results_20250402_091041_vx30-30_dvmax20-20');
+
+%% Fill the path to the results' folder
+result_folder = ''; 
+
 
 if generate_results
     %% Run BRS computation
@@ -61,7 +63,7 @@ if generate_results
         'uMode', uMode);
 else
     % Use existing results folder
-    if isempty(existing_result_folder)
+    if isempty(result_folder)
         error('Must specify existing_result_folder when generate_results is false');
     end
     result_folder = existing_result_folder; 

@@ -46,8 +46,9 @@ targetSize = [deg2rad(15), deg2rad(3), deg2rad(1)];
 uMode = 'max';
 
 %% Path to load existing results (if not generating new ones)
-path_to_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-existing_result_folder = 'steered_frs_results_20250402_114522_vx30-30_dvmax20-20'; % Fill in if you want to use existing results
+
+%% Fill the path to the results' folder
+results_folder = ''; 
 
 if generate_results
     %% Run FRS computation
@@ -62,7 +63,7 @@ if generate_results
         'uMode', uMode);
 else
     % Use existing results folder
-    if isempty(existing_result_folder)
+    if isempty(results_folder)
         error('Must specify existing_result_folder when generate_results is false');
     end
     result_folder = fullfile(path_to_results_folder, existing_result_folder);
