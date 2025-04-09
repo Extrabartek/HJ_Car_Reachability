@@ -48,7 +48,8 @@ uMode = 'max';
 %% Path to load existing results (if not generating new ones)
 
 %% Fill the path to the results' folder
-results_folder = ''; 
+result_folder = '';
+
 
 if generate_results
     %% Run FRS computation
@@ -63,11 +64,9 @@ if generate_results
         'uMode', uMode);
 else
     % Use existing results folder
-    if isempty(results_folder)
+    if isempty(result_folder)
         error('Must specify existing_result_folder when generate_results is false');
     end
-    result_folder = fullfile(path_to_results_folder, existing_result_folder);
-    disp(['Using existing results from: ', result_folder]);
 end
 
 %% Visualize results

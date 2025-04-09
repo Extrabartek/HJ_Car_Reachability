@@ -66,8 +66,6 @@ else
     if isempty(result_folder)
         error('Must specify existing_result_folder when generate_results is false');
     end
-    result_folder = existing_result_folder; 
-    disp(['Using existing results from: ', result_folder]);
 end
 
 %% Visualize results
