@@ -15,13 +15,13 @@ close all;
 
 % Example paths (for documentation only - adjust these to your actual paths)
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250402_091041_vx30-30_dvmax20-20');
+brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250414_154955_vx30-30_dvmax20-20');
 frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250402_122140_vx30-30_dvmax20-20');
 
 %% Define an initial state
 % Format: [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
 % Example: 10 deg/s yaw rate, 5 deg sideslip, 2 deg steering angle
-xinit = [deg2rad(-130); deg2rad(-13); deg2rad(0)];
+xinit = [deg2rad(-15.7); deg2rad(-2.75); deg2rad(0)];
 
 %% Define a custom target set (optional)
 % If you want to define a custom target set, uncomment and modify these lines:
@@ -39,7 +39,7 @@ velocity_idx = 1;         % Index of the velocity to use
 dv_max_idx = 1;           % Index of the steering rate limit to use
 use_frs = false;          % Whether to use FRS for safety constraints
 frs_weight = 1;         % Weight for FRS constraints (0-1)
-max_time = 2.5;           % Maximum trajectory time (seconds)
+max_time = 0.3;           % Maximum trajectory time (seconds)
 delta_slice = [];         % Which delta slice to visualize (default: middle slice)
 
 %% Compute the optimal trajectory

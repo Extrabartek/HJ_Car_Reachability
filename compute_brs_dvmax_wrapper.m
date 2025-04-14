@@ -11,10 +11,10 @@ function compute_brs_dvmax_wrapper()
 clear; clc;
 
 %% Select if you want to load or produce results
-generate_results = false;
-visualize_results = false;
+generate_results = true;
+visualize_results = true;
 save_plots = false;
-threed_plot = true;
+threed_plot = false;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
@@ -24,19 +24,19 @@ velocities = [30];
 dvmax_values = [deg2rad(20)];
 
 % Maximum simulation time (seconds)
-tMax = 2.5;
+tMax = 0.3;
 
 % Time step for computation (seconds) 
 dt = 0.01;
 
 % Grid dimensions [gamma, beta, delta]
-gridSize = [101, 101, 51];
+gridSize = [71, 71, 51];
 
 % Grid minimum values (radians)
-gridMin = [deg2rad(-150), deg2rad(-25), deg2rad(-20)];
+gridMin = [deg2rad(-30), deg2rad(-5), deg2rad(-2)];
 
 % Grid maximum values (radians)
-gridMax = [deg2rad(150), deg2rad(25), deg2rad(20)];
+gridMax = [deg2rad(30), deg2rad(5), deg2rad(2)];
 
 % Size of target set (radians)
 targetSize = [deg2rad(15), deg2rad(6), deg2rad(1)];
@@ -47,7 +47,8 @@ uMode = 'min';
 %% Path to load existing results (if not generating new ones)
 
 %% Fill the path to the results' folder
-result_folder = ''; 
+main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
+result_folder = strcat(main_results_folder,'steered_brs_results_20250414_154032_vx30-30_dvmax20-20'); 
 
 
 if generate_results

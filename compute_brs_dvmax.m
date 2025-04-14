@@ -138,7 +138,7 @@ for v_idx = 1:length(velocities)
         % Put grid and dynamic systems into schemeData
         schemeData.grid = g;
         schemeData.dynSys = dCar;
-        schemeData.accuracy = 'high'; % Set accuracy
+        schemeData.accuracy = 'veryHigh'; % Set accuracy
         schemeData.uMode = opts.uMode;
         
         % Setup visualization options

@@ -12,10 +12,10 @@ function compute_frs_dvmax_wrapper()
 clear; clc;
 
 %% Select if you want to load or produce results
-generate_results = false;
+generate_results = true;
 visualize_results = false;
 save_plots = false;
-threed_plot = true;
+threed_plot = false;
 
 %% Define computation parameters
 % Velocity values to test (m/s)
@@ -25,7 +25,7 @@ velocities = [30];
 dvmax_values = [deg2rad(20)];
 
 % Maximum simulation time (seconds)
-tMax = 2.5;
+tMax = 2.0;
 
 % Time step for computation (seconds) 
 dt = 0.01;

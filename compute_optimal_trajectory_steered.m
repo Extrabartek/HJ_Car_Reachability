@@ -350,9 +350,10 @@ function [traj, traj_tau, traj_u, traj_metrics] = computeTargetedSetTrajectory(g
     % that aims to reach the specified final set
     
     %% Setup parameters
-    dt = 0.01;  % Time step for integration
+    dt = 0.001;  % Time step for integration
     max_time = extra_args.maxTime;  % Maximum trajectory time
     max_steps = ceil(max_time / dt);
+
     
     % Constants
     finalSetWeight = extra_args.finalSetWeight;
@@ -411,31 +412,7 @@ function [traj, traj_tau, traj_u, traj_metrics] = computeTargetedSetTrajectory(g
         u_brs = dCar_orig.optCtrl(t_current, x_current, deriv_brs_at_x, extra_args.uMode);
         
         % Blend control based on distance to target and BRS value
-        if false
-            % We're inside the BRS, blend between BRS guidance and target reaching
-            % The weight depends on how far we are from the final set
-            target_weight = min(1, abs(finalSet_value) * finalSetWeight);
-            u = (1 - target_weight) * u_brs + target_weight * u_final;
-        else
-            % Outside BRS, prioritize getting back to the BRS
-            u = u_brs;
-        end
-        
-        % Apply FRS constraint if active
-        if frs_active
-            % Get FRS gradient
-            deriv_frs = computeGradients(g, extra_args.data_frs);
-            deriv_frs_at_x = eval_u(g, deriv_frs, x_current);
-            
-            % Get control that keeps us in FRS
-            u_frs = dCar_orig.optCtrl(t_current, x_current, deriv_frs_at_x, 'max');
-            
-            % If FRS control conflicts with current control, blend them
-            if sign(u) * sign(u_frs) < 0
-                frs_blend = min(1, extra_args.frsWeight * (0.1 - frs_value)/0.1);
-                u = (1 - frs_blend) * u + frs_blend * u_frs;
-            end
-        end
+        u = u_brs;
         
         % Apply control limits
         dv_max = dCar_orig.dv_max;
