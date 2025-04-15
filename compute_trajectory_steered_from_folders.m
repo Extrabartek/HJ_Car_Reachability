@@ -119,6 +119,7 @@ end
 
 % Extract specific BRS data for the selected indices
 data_brs = brs_data.all_data{opts.velocityIdx, opts.dvMaxIdx};
+data_brs_full = brs_data.all_data_full{opts.velocityIdx, opts.dvMaxIdx};
 
 % Update vehicle parameters with selected velocity and steering rate limit
 params = base_params;
@@ -283,7 +284,7 @@ end
     end
     
     % Compute time-of-arrival function
-    arrival_time = compute_arrival_time(data_full, tau_brs);
+    arrival_time = compute_arrival_time(data_brs_full, tau_brs);
     
     % Check if initial state is in BRS using time-of-arrival function
     arrival_val = eval_u(g, arrival_time, xinit);
