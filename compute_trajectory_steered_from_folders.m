@@ -296,16 +296,12 @@ end
     
     % Add the time-of-arrival function to extra_args
     extra_args.arrival_time = arrival_time;
+
+    dCar = NonlinearBicycleSteered([0, 0, 0], params);
     
     %% Continue with the rest of the function...
-    % Choose trajectory computation method
-    if ~isfield(extra_args, 'finalSet') || isempty(extra_args.finalSet)
-        % Standard BRS-based trajectory
-        [traj, traj_tau, traj_u, traj_metrics] = computeBRSTrajectory(g, data_brs, tau_brs, dCar, extra_args);
-    else
-        % Final set-targeted trajectory
-        [traj, traj_tau, traj_u, traj_metrics] = computeTargetedSetTrajectory(g, data_brs, tau_brs, dCar, extra_args.finalSet, extra_args);
-    end
+    
+    [traj, traj_tau, traj_u, traj_metrics] = compute_optimal_trajectory_steered(g, data_brs, tau_brs, dCar, extra_args);
 
 %% Save results if requested
 if opts.savePlots
