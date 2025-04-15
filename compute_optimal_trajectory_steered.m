@@ -191,18 +191,53 @@ if extra_args.visualize
         title('Control Input (Steering Rate)');
     end
     
-    % 8. 3D trajectory visualization
-    subplot(3, 3, 8);
-    plot3(traj(2,:) * 180/pi, traj(1,:) * 180/pi, traj(3,:) * 180/pi, 'b-', 'LineWidth', 2);
-    hold on;
-    plot3(traj(2,1) * 180/pi, traj(1,1) * 180/pi, traj(3,1) * 180/pi, 'ro', 'MarkerSize', 10, 'LineWidth', 2);
-    plot3(traj(2,end) * 180/pi, traj(1,end) * 180/pi, traj(3,end) * 180/pi, 'go', 'MarkerSize', 10, 'LineWidth', 2);
-    grid on;
-    xlabel('Sideslip Angle (deg)');
-    ylabel('Yaw Rate (deg/s)');
-    zlabel('Steering Angle (deg)');
-    title('3D Trajectory');
-    view([-30, 30]);
+    % 8. 3D trajectory visualization with BRS and target set boundaries
+subplot(3, 3, 8);
+plot3(traj(2,:) * 180/pi, traj(1,:) * 180/pi, traj(3,:) * 180/pi, 'b-', 'LineWidth', 2);
+hold on;
+plot3(traj(2,1) * 180/pi, traj(1,1) * 180/pi, traj(3,1) * 180/pi, 'ro', 'MarkerSize', 10, 'LineWidth', 2);
+plot3(traj(2,end) * 180/pi, traj(1,end) * 180/pi, traj(3,end) * 180/pi, 'go', 'MarkerSize', 10, 'LineWidth', 2);
+
+% Add BRS boundary as a 3D isosurface
+if true
+    % Extract zero level set of BRS
+    [faces, verts] = isosurface(g.xs{2} * 180/pi, g.xs{1} * 180/pi, g.xs{3} * 180/pi, data_brs, 0);
+    
+    % Plot BRS isosurface as transparent red
+    h_brs = patch('Faces', faces, 'Vertices', verts, 'FaceColor', 'r', 'EdgeColor', 'none', 'FaceAlpha', 0.2);
+    
+    % Add target set if provided
+    if isfield(extra_args, 'finalSet') && ~isempty(extra_args.finalSet)
+        % Extract zero level set of target set
+        [faces_target, verts_target] = isosurface(g.xs{2} * 180/pi, g.xs{1} * 180/pi, g.xs{3} * 180/pi, extra_args.finalSet, 0);
+        
+        % Plot target set isosurface as transparent green
+        h_target = patch('Faces', faces_target, 'Vertices', verts_target, 'FaceColor', 'g', 'EdgeColor', 'none', 'FaceAlpha', 0.2);
+        
+        % Update legend items for 3D plot
+        legend('Trajectory', 'Initial State', 'Final State', 'BRS Boundary', 'Target Set', 'Location', 'best');
+    else
+        % Legend without target set
+        legend('Trajectory', 'Initial State', 'Final State', 'BRS Boundary', 'Location', 'best');
+    end
+else
+    % Simplified legend if no BRS visualization
+    legend('Trajectory', 'Initial State', 'Final State', 'Location', 'best');
+end
+
+grid on;
+xlabel('Sideslip Angle (deg)');
+ylabel('Yaw Rate (deg/s)');
+zlabel('Steering Angle (deg)');
+title('3D Trajectory with BRS & Target');
+
+% Adjust the view angle for better visualization
+view([-30, 30]);
+
+% Add lighting effects to enhance 3D visualization
+lighting gouraud;
+camlight;
+material dull;
     
     % 9. Additional info (metrics display)
     subplot(3, 3, 9);
@@ -252,65 +287,185 @@ if extra_args.visualize
 end
 end
 
-%% Function to compute trajectory based on BRS (original method)
 function [traj, traj_tau, traj_u, traj_metrics] = computeBRSTrajectory(g, data_brs, tau_brs, dCar, extra_args)
-    %% Reverse time for trajectory computation (for BRS)
-    % Flip data time points so we start from the beginning of time
-    dataTraj = flip(data_brs, 4);
-    tau_reversed = flip(tau_brs);
+    %% COMPUTEBRSTRAJECTORY Compute optimal trajectory based on BRS data
+    % Uses either time-of-arrival function (preferred) or value function gradient
     
-    %% Setup extra arguments for trajectory computation
-    TrajExtraArgs.uMode = extra_args.uMode;
-    TrajExtraArgs.dMode = 'max';  % Default disturbance mode (if applicable)
-    TrajExtraArgs.visualize = false;  % Turn off default visualization - we'll create our own
-    TrajExtraArgs.projDim = [1, 1, 0];  % Default projection dimensions for 2D visualization
+    % Setup integration parameters
+    dt = 0.01;  % Smaller time step for accurate integration
+    max_time = extra_args.maxTime;
+    max_steps = ceil(max_time / dt);
     
-    if isfield(extra_args, 'figNum') && ~isempty(extra_args.figNum)
-        TrajExtraArgs.fig_num = extra_args.figNum;
-    end
+    % Initialize trajectory storage
+    traj = zeros(3, max_steps+1);  % For 3D state [gamma; beta; delta]
+    traj(:,1) = dCar.x;  % Set initial state
+    traj_tau = (0:max_steps) * dt;  % Time vector
+    traj_u = zeros(1, max_steps);  % Control inputs
     
-    %% Create custom dynamics system if using FRS constraint
-    if isfield(extra_args, 'useFRSConstraint') && extra_args.useFRSConstraint && isfield(extra_args, 'data_frs') && ~isempty(extra_args.data_frs)
-        % Create a wrapper for the dynamics to incorporate FRS constraint
-        dCar_orig = dCar; % Store original dynamics
+    % Create a working copy of the vehicle model
+    dCar_orig = dCar;
+    
+    % Check if we have time-of-arrival data
+    use_arrival_time = isfield(extra_args, 'arrival_time') && ...
+                       ~isempty(extra_args.arrival_time);
+                   
+    if use_arrival_time
+        fprintf('Using time-of-arrival function for trajectory computation.\n');
+        arrival_time = extra_args.arrival_time;
         
-        % Override the optCtrl method to consider both BRS and FRS
-        dCar.optCtrl = @(t, x, deriv, uMode) optCtrlWithFRS(dCar_orig, t, x, deriv, uMode, g, extra_args.data_frs, extra_args.frsWeight);
-    end
-    
-    %% Compute optimal trajectory
-    [traj, traj_tau, extraOuts] = computeOptTraj(g, dataTraj, tau_reversed, dCar, TrajExtraArgs);
-    
-    %% Extract control inputs
-    % Get trajectory length
-    traj_length = size(traj, 2);
-    
-    % Initialize control inputs storage
-    traj_u = zeros(1, traj_length-1);
-    
-    % Compute control at each trajectory point
-    for i = 1:traj_length-1
-        x_current = traj(:, i);
-        
-        % Get value function at current time and state
-        t_idx = find(tau_reversed >= traj_tau(i), 1, 'first');
-        if isempty(t_idx), t_idx = 1; end
-        
-        % Compute gradient of value function
-        deriv = computeGradients(g, dataTraj(:,:,:,t_idx));
-        deriv_at_x = eval_u(g, deriv, x_current);
-        
-        % Get optimal control
-        if isfield(extra_args, 'useFRSConstraint') && extra_args.useFRSConstraint && isfield(extra_args, 'data_frs') && ~isempty(extra_args.data_frs)
-            % Use our custom control function that considers both BRS and FRS
-            traj_u(i) = optCtrlWithFRS(dCar, traj_tau(i), x_current, deriv_at_x, extra_args.uMode, g, extra_args.data_frs, extra_args.frsWeight);
+        % Check if initial state is reachable according to arrival time
+        arr_val = eval_u(g, arrival_time, dCar.x);
+        if isfinite(arr_val)
+            fprintf('Initial state is reachable in %.2f seconds (from arrival time).\n', arr_val);
         else
-            % Use standard control function
-            traj_u(i) = dCar.optCtrl(traj_tau(i), x_current, deriv_at_x, extra_args.uMode);
+            warning('Initial state appears unreachable according to arrival time function!');
+        end
+        
+        % Compute gradients of arrival time (only once, since it doesn't change with time)
+        % Note: arrival time DECREASES toward the target, so we need to negate the gradient
+        fprintf('Computing arrival time gradients...\n');
+        arrival_grad = computeGradients(g, arrival_time);
+        for i = 1:length(arrival_grad)
+            arrival_grad{i} = -arrival_grad{i};  % Negate for correct direction
+        end
+    else
+        fprintf('Using value function for trajectory computation.\n');
+    end
+    
+    % Check for FRS constraint
+    use_frs = isfield(extra_args, 'useFRSConstraint') && ...
+              extra_args.useFRSConstraint && ...
+              isfield(extra_args, 'data_frs') && ...
+              ~isempty(extra_args.data_frs);
+          
+    if use_frs
+        fprintf('Using FRS constraint with weight %.2f.\n', extra_args.frsWeight);
+        data_frs = extra_args.data_frs;
+    end
+    
+    %% Main trajectory computation loop
+    fprintf('Computing trajectory...\n');
+    for i = 1:max_steps
+        % Current state and time
+        x_current = traj(:,i);
+        t_current = traj_tau(i);
+        
+        % Get gradient for control computation
+        if use_arrival_time
+            % Use arrival time gradient (already negated for correct direction)
+            deriv_at_x = eval_u(g, arrival_grad, x_current);
+        else
+            % Use value function gradient
+            deriv = computeGradients(g, data_brs);
+            deriv_at_x = eval_u(g, deriv, x_current);
+        end
+        
+        % Compute control
+        if use_frs
+            % Check FRS value
+            frs_val = eval_u(g, data_frs, x_current);
+            
+            if frs_val > 0
+                % Already outside FRS - just use BRS control
+                u = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, extra_args.uMode);
+            else
+                % Inside FRS - consider FRS constraint if close to boundary
+                if frs_val > -0.1
+                    % Compute FRS gradient
+                    deriv_frs = computeGradients(g, data_frs);
+                    deriv_frs_at_x = eval_u(g, deriv_frs, x_current);
+                    
+                    % Get FRS control (maximizing safety)
+                    u_frs = dCar_orig.optCtrl(t_current, x_current, deriv_frs_at_x, 'max');
+                    
+                    % Get BRS control
+                    u_brs = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, extra_args.uMode);
+                    
+                    % Blend controls based on proximity to FRS boundary
+                    frs_weight = extra_args.frsWeight * min(1, max(0, (0.1 - abs(frs_val))/0.1));
+                    
+                    % Check if controls are conflicting
+                    if sign(u_brs) * sign(u_frs) < 0
+                        u = (1 - frs_weight) * u_brs + frs_weight * u_frs;
+                    else
+                        u = u_brs; % Controls agree, use BRS control
+                    end
+                else
+                    % Well inside FRS - use BRS control
+                    u = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, extra_args.uMode);
+                }
+            }
+        else
+            % No FRS constraint - just use BRS control
+            u = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, extra_args.uMode);
+        end
+        
+        % Apply control limits
+        dv_max = dCar_orig.dv_max;
+        if u > dv_max
+            u = dv_max;
+        elseif u < -dv_max
+            u = -dv_max;
+        end
+        
+        % Store control
+        traj_u(i) = u;
+        
+        % Check if we've reached the target
+        if use_arrival_time
+            arr_val = eval_u(g, arrival_time, x_current);
+            if arr_val <= tau_brs(1) + dt  % Very close to initial time = target reached
+                fprintf('Target reached at step %d (time %.2fs)!\n', i, t_current);
+                % Truncate trajectory
+                traj = traj(:, 1:i);
+                traj_tau = traj_tau(1:i);
+                traj_u = traj_u(1:i);
+                break;
+            end
+        else
+            % Check BRS value as proxy for target reaching
+            brs_val = eval_u(g, data_brs, x_current);
+            if brs_val < -0.95  % Deeply inside BRS, likely close to target
+                fprintf('Likely reached target vicinity at step %d (time %.2fs).\n', i, t_current);
+                % Continue trajectory a bit further to ensure target is reached
+            end
+        end
+        
+        % Check for divergence (far outside BRS)
+        brs_val = eval_u(g, data_brs, x_current);
+        if brs_val > 0.5  
+            warning('Trajectory appears to be diverging (BRS value = %.2f). Stopping computation.', brs_val);
+            % Truncate trajectory
+            traj = traj(:, 1:i);
+            traj_tau = traj_tau(1:i);
+            traj_u = traj_u(1:i);
+            break;
+        end
+        
+        % Propagate dynamics for one step
+        dCar_orig.updateState(u, dt);
+        traj(:,i+1) = dCar_orig.x;
+        
+        % Print progress occasionally
+        if mod(i, 100) == 0
+            fprintf('Step %d/%d (t = %.2fs): BRS value = %.4f\n', i, max_steps, t_current, brs_val);
+            if use_arrival_time
+                arr_val = eval_u(g, arrival_time, x_current);
+                if isfinite(arr_val)
+                    fprintf('  Arrival time value = %.4fs\n', arr_val);
+                else
+                    fprintf('  Arrival time value = inf (outside reachable set)\n');
+                end
+            end
         end
     end
     
-    %% Compute additional trajectory metrics
+    % If loop completed without breaking, use full trajectory
+    if i == max_steps
+        fprintf('Reached maximum time without converging to target.\n');
+    end
+    
+    %% Compute trajectory metrics
     traj_metrics = struct();
     
     % Time to reach target
@@ -326,21 +481,29 @@ function [traj, traj_tau, traj_u, traj_metrics] = computeBRSTrajectory(g, data_b
     traj_metrics.control_energy = sum(traj_u.^2);
     
     % Check if trajectory stays within FRS if provided
-    if isfield(extra_args, 'useFRSConstraint') && extra_args.useFRSConstraint && isfield(extra_args, 'data_frs') && ~isempty(extra_args.data_frs)
+    if use_frs
         traj_metrics.in_frs = true;
         traj_metrics.min_frs_value = inf;
         
-        for i = 1:traj_length
-            frs_value = eval_u(g, extra_args.data_frs, traj(:,i));
+        for j = 1:size(traj, 2)
+            frs_value = eval_u(g, data_frs, traj(:,j));
             traj_metrics.min_frs_value = min(traj_metrics.min_frs_value, frs_value);
             
             if frs_value > 0
                 traj_metrics.in_frs = false;
-                traj_metrics.frs_violation_time = traj_tau(i);
+                traj_metrics.frs_violation_time = traj_tau(j);
                 break;
             end
         end
+        
+        if traj_metrics.in_frs
+            fprintf('Trajectory stays within FRS bounds (safe).\n');
+        else
+            fprintf('WARNING: Trajectory violates FRS bounds at %.2f seconds!\n', traj_metrics.frs_violation_time);
+        end
     end
+    
+    fprintf('Trajectory computation complete: %d steps, %.2f seconds.\n', length(traj_tau), traj_tau(end));
 end
 
 %% Function to compute trajectory targeting a specific final set
@@ -348,9 +511,8 @@ function [traj, traj_tau, traj_u, traj_metrics] = computeTargetedSetTrajectory(g
     % For targeted trajectories, we'll use a different approach
     % We'll perform direct shooting with a custom dynamics and control law
     % that aims to reach the specified final set
-    
     %% Setup parameters
-    dt = 0.001;  % Time step for integration
+    dt = 0.01;  % Time step for integration
     max_time = extra_args.maxTime;  % Maximum trajectory time
     max_steps = ceil(max_time / dt);
 
@@ -409,7 +571,8 @@ function [traj, traj_tau, traj_u, traj_metrics] = computeTargetedSetTrajectory(g
         u_final = dCar_orig.optCtrl(t_current, x_current, deriv_final_at_x, 'min');
         
         % BRS navigation term
-        u_brs = dCar_orig.optCtrl(t_current, x_current, deriv_brs_at_x, extra_args.uMode);
+        % u_brs = dCar_orig.optCtrl(t_current, x_current, deriv_brs_at_x, extra_args.uMode);
+        u_brs = dCar_orig.optCtrl(t_current, x_current, deriv_brs_at_x, 'min');
         
         % Blend control based on distance to target and BRS value
         u = u_brs;
