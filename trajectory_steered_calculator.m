@@ -15,7 +15,7 @@ close all;
 
 % Example paths (for documentation only - adjust these to your actual paths)
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250415_153455_vx30-30_dvmax20-20');
+brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250415_161304_vx30-30_dvmax20-20');
 frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250402_122140_vx30-30_dvmax20-20');
 
 %% Define an initial state
