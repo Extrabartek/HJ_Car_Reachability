@@ -74,14 +74,8 @@ end
 dCar = NonlinearBicycleSteered(xinit, params);
 
 %% Choose trajectory computation method based on whether a final set is specified
-if ~isfield(extra_args, 'finalSet') || isempty(extra_args.finalSet)
-    % Standard BRS-based trajectory
-    [traj, traj_tau, traj_u, traj_metrics] = computeBRSTrajectory(g, data_brs, tau_brs, dCar, extra_args);
-else
-    % Final set-targeted trajectory
-    [traj, traj_tau, traj_u, traj_metrics] = computeTargetedSetTrajectory(g, data_brs, tau_brs, dCar, extra_args.finalSet, extra_args);
-end
 
+[traj, traj_tau, traj_u, traj_metrics] = computeBRSTrajectory(g, data_brs, tau_brs, dCar, extra_args);
 %% Create visualization if requested
 if extra_args.visualize
     % Create figure
@@ -361,44 +355,8 @@ function [traj, traj_tau, traj_u, traj_metrics] = computeBRSTrajectory(g, data_b
         end
         
         % Compute control
-        if use_frs
-            % Check FRS value
-            frs_val = eval_u(g, data_frs, x_current);
-            
-            if frs_val > 0
-                % Already outside FRS - just use BRS control
-                u = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, extra_args.uMode);
-            else
-                % Inside FRS - consider FRS constraint if close to boundary
-                if frs_val > -0.1
-                    % Compute FRS gradient
-                    deriv_frs = computeGradients(g, data_frs);
-                    deriv_frs_at_x = eval_u(g, deriv_frs, x_current);
-                    
-                    % Get FRS control (maximizing safety)
-                    u_frs = dCar_orig.optCtrl(t_current, x_current, deriv_frs_at_x, 'max');
-                    
-                    % Get BRS control
-                    u_brs = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, extra_args.uMode);
-                    
-                    % Blend controls based on proximity to FRS boundary
-                    frs_weight = extra_args.frsWeight * min(1, max(0, (0.1 - abs(frs_val))/0.1));
-                    
-                    % Check if controls are conflicting
-                    if sign(u_brs) * sign(u_frs) < 0
-                        u = (1 - frs_weight) * u_brs + frs_weight * u_frs;
-                    else
-                        u = u_brs; % Controls agree, use BRS control
-                    end
-                else
-                    % Well inside FRS - use BRS control
-                    u = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, extra_args.uMode);
-                }
-            }
-        else
-            % No FRS constraint - just use BRS control
-            u = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, extra_args.uMode);
-        end
+        
+        u = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, 'min');
         
         % Apply control limits
         dv_max = dCar_orig.dv_max;

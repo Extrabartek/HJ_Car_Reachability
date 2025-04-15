@@ -266,42 +266,39 @@ if opts.useFRS && ~isempty(data_frs)
 end
 
 %% Compute time-of-arrival function for better gradients
-    fprintf('Computing time-of-arrival function for more robust trajectory planning...\n');
-    
-    % Extract data for all time steps if available (for 3D state)
-    if ndims(data_brs) == 3  % Only final time slice is provided
-        if isfield(extra_args, 'all_data_full') && ~isempty(extra_args.all_data_full)
-            % Use full time data if provided in extra_args
-            data_full = extra_args.all_data_full;
-        else
-            % Otherwise, use the single time slice (less accurate but still workable)
-            fprintf('Warning: Using only final time slice. Trajectory may be suboptimal.\n');
-            data_full = data_brs;
-        end
+fprintf('Computing time-of-arrival function for more robust trajectory planning...\n');
+
+% Extract data for all time steps if available (for 3D state)
+if ndims(data_brs) == 3  % Only final time slice is provided
+    if isfield(extra_args, 'all_data_full') && ~isempty(extra_args.all_data_full)
+        % Use full time data if provided in extra_args
+        data_full = extra_args.all_data_full;
     else
-        % Data already contains all time steps
+        % Otherwise, use the single time slice (less accurate but still workable)
+        fprintf('Warning: Using only final time slice. Trajectory may be suboptimal.\n');
         data_full = data_brs;
     end
-    
-    % Compute time-of-arrival function
-    arrival_time = compute_arrival_time(data_brs_full, tau_brs);
-    
-    % Check if initial state is in BRS using time-of-arrival function
-    arrival_val = eval_u(g, arrival_time, xinit);
-    if ~isfinite(arrival_val)
-        warning('Initial state is not in the BRS according to time-of-arrival function.');
-    else
-        fprintf('Initial state is reachable in %.2f seconds.\n', arrival_val);
-    end
-    
-    % Add the time-of-arrival function to extra_args
-    extra_args.arrival_time = arrival_time;
+else
+    % Data already contains all time steps
+    data_full = data_brs;
+end
 
-    dCar = NonlinearBicycleSteered([0, 0, 0], params);
-    
-    %% Continue with the rest of the function...
-    
-    [traj, traj_tau, traj_u, traj_metrics] = compute_optimal_trajectory_steered(g, data_brs, tau_brs, dCar, extra_args);
+% Compute time-of-arrival function
+arrival_time = compute_arrival_time(data_brs_full, tau_brs);
+
+% Check if initial state is in BRS using time-of-arrival function
+arrival_val = eval_u(g, arrival_time, xinit);
+if ~isfinite(arrival_val)
+    warning('Initial state is not in the BRS according to time-of-arrival function.');
+else
+    fprintf('Initial state is reachable in %.2f seconds.\n', arrival_val);
+end
+
+% Add the time-of-arrival function to extra_args
+extra_args.arrival_time = arrival_time;
+
+% Extract xinit and params from dCar
+[traj, traj_tau, traj_u, traj_metrics] = compute_optimal_trajectory_steered(g, data_brs, tau_brs, xinit, params, extra_args);
 
 %% Save results if requested
 if opts.savePlots
