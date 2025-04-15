@@ -11,7 +11,7 @@ function compute_brs_dvmax_wrapper()
 clear; clc;
 
 %% Select if you want to load or produce results
-generate_results = false;
+generate_results = true;
 visualize_results = true;
 save_plots = false;
 threed_plot = true;
@@ -24,19 +24,19 @@ velocities = [30];
 dvmax_values = [deg2rad(20)];
 
 % Maximum simulation time (seconds)
-tMax = 0.25;
+tMax = 1.25;
 
 % Time step for computation (seconds) 
-dt = 0.005;
+dt = 0.01;
 
 % Grid dimensions [gamma, beta, delta]
-gridSize = [151, 151, 151];
+gridSize = [101, 101, 71];
 
 % Grid minimum values (radians)
-gridMin = [deg2rad(-60), deg2rad(-15), deg2rad(-5)];
+gridMin = [deg2rad(-150), deg2rad(-25), deg2rad(-5)];
 
 % Grid maximum values (radians)
-gridMax = [deg2rad(60), deg2rad(15), deg2rad(5)];
+gridMax = [deg2rad(150), deg2rad(25), deg2rad(5)];
 
 % Size of target set (radians)
 targetSize = [deg2rad(15), deg2rad(6), deg2rad(1)];

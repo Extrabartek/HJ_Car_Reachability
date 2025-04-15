@@ -26,7 +26,7 @@ end
 arrival_time = inf(grid_dims);
 
 % Process each time step in reverse (from final time to initial time)
-for t_idx = num_times:-1:1
+for t_idx = 1:1:num_times
     % Extract value function at current time
     if ndims(data_brs) == 4
         current_data = data_brs(:,:,:,t_idx);

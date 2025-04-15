@@ -178,7 +178,7 @@ if extra_args.visualize
     % 7. Control input
     subplot(3, 3, 7);
     if ~isempty(traj_u)
-        plot(traj_tau(1:end-1), traj_u * 180/pi, 'LineWidth', 2);
+        plot(traj_tau(1:end-1), traj_u(1:end-1) * 180/pi, 'LineWidth', 2);
         grid on;
         xlabel('Time (s)');
         ylabel('Steering Rate (deg/s)');
@@ -286,7 +286,7 @@ function [traj, traj_tau, traj_u, traj_metrics] = computeBRSTrajectory(g, data_b
     % Uses either time-of-arrival function (preferred) or value function gradient
     
     % Setup integration parameters
-    dt = 0.01;  % Smaller time step for accurate integration
+    dt = 0.001;  % Smaller time step for accurate integration
     max_time = extra_args.maxTime;
     max_steps = ceil(max_time / dt);
     
@@ -356,7 +356,7 @@ function [traj, traj_tau, traj_u, traj_metrics] = computeBRSTrajectory(g, data_b
         
         % Compute control
         
-        u = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, 'min');
+        u = dCar_orig.optCtrl(t_current, x_current, deriv_at_x, 'max');
         
         % Apply control limits
         dv_max = dCar_orig.dv_max;
