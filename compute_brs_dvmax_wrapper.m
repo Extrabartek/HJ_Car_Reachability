@@ -30,16 +30,16 @@ tMax = 1.25;
 dt = 0.01;
 
 % Grid dimensions [gamma, beta, delta]
-gridSize = [101, 101, 71];
+gridSize = [151, 151, 71];
 
 % Grid minimum values (radians)
-gridMin = [deg2rad(-150), deg2rad(-25), deg2rad(-5)];
+gridMin = [deg2rad(-180), deg2rad(-25), deg2rad(-10)];
 
 % Grid maximum values (radians)
-gridMax = [deg2rad(150), deg2rad(25), deg2rad(5)];
+gridMax = [deg2rad(180), deg2rad(25), deg2rad(10)];
 
 % Size of target set (radians)
-targetSize = [deg2rad(15), deg2rad(6), deg2rad(1)];
+targetSize = [deg2rad(10), deg2rad(2), deg2rad(1)];
 
 % Control mode ('min' for target reaching, 'max' for target avoidance)
 uMode = 'min';
