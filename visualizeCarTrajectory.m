@@ -410,20 +410,58 @@ try
     sgtitle(sprintf('Car Trajectory Visualization (v_x = %.1f m/s)', vx), ...
             'FontSize', 16, 'FontWeight', 'bold');
     
+    % Store variables needed by nested functions in a struct for reference
+    userData = struct(...
+        'traj_tau', traj_tau, ...
+        'traj', traj, ...
+        'gamma', gamma, ...
+        'beta', beta, ...
+        'delta', delta, ...
+        'psi', psi, ...
+        'x', x, ...
+        'y', y, ...
+        'h_current', h_current, ...
+        'visible_grid_size', visible_grid_size, ...
+        'grid_spacing', grid_spacing, ...
+        'h_grid', h_grid, ...
+        'h_grid_perp', h_grid_perp, ...
+        'h_wheel_fl', h_wheel_fl, ...
+        'h_wheel_fr', h_wheel_fr, ...
+        'front_left_wheel', front_left_wheel, ...
+        'front_right_wheel', front_right_wheel, ...
+        'opts', opts, ...
+        'wheel_width', wheel_width, ...
+        'h_direction', h_direction, ...
+        'arrow_length', arrow_length, ...
+        'h_path', h_path, ...
+        'visible_grid_size_with_margin', visible_grid_size_with_margin, ...
+        'is_3d_brs', is_3d_brs, ...
+        'time_display', time_display, ...
+        'left_panel', left_panel ...
+    );
+    
+    % Store the userData in the figure for access by callbacks
+    set(fig, 'UserData', userData);
 
     % Setup callback for slider
-    set(progress_bar, 'Callback', @(src, ~) updateVisualization(round(get(src, 'Value'))));
+    set(progress_bar, 'Callback', @updateVisualizationCallback);
+    
     % Setup callback for play button
     if ~try_video
         is_playing = false;
         play_timer = timer('Period', 0.05, 'ExecutionMode', 'fixedRate');
         
         % Timer callback function
-        play_timer.TimerFcn = @(~, ~) updateFromTimer();
+        play_timer.TimerFcn = @updateFromTimerCallback;
         
         % Play button callback
-        set(play_button, 'Callback', @(src, ~) togglePlayback(src));
+        set(play_button, 'Callback', @togglePlaybackCallback);
         
+        % Store timer in figure UserData
+        userData.play_timer = play_timer;
+        userData.progress_bar = progress_bar;
+        userData.is_playing = is_playing;
+        set(fig, 'UserData', userData);
     end
     
     %% Animation or interactive mode
@@ -447,7 +485,7 @@ try
             [~, idx] = min(abs(traj_tau - current_time));
             
             % Update visualization
-            updateVisualization(idx);
+            updateVisualization(idx, userData);
             
             % Capture frame for video
             frame_data = getframe(fig);
@@ -464,7 +502,7 @@ try
         fprintf('Video saved successfully to: %s\n', opts.videoFile);
     else
         % Interactive mode - show the initial frame
-        updateVisualization(1);
+        updateVisualization(1, userData);
         fprintf('Interactive mode ready. Use the slider to navigate or click Play to animate.\n');
     end
 
@@ -493,163 +531,199 @@ end
 
 end
 
-% Define a function to update the visualization for a specific frame index
-    function updateVisualization(idx)
-        % Get current state
-        current_time = traj_tau(idx);
-        current_gamma = gamma(idx);
-        current_beta = beta(idx);
-        current_delta = delta(idx);
-        current_psi = psi(idx);
-        current_x = x(idx);
-        current_y = y(idx);
-        
-        % Update time display
-        set(time_display, 'String', sprintf('Time: %.2f s', current_time));
-        
-        % Update progress bar
-        set(progress_bar, 'Value', idx);
-        
-        % Update state-space view
-        if is_3d_brs
-            % Update 3D state-space marker
-            if ishandle(h_current)
-                set(h_current, 'XData', current_beta * 180/pi, ...
-                             'YData', current_gamma * 180/pi, ...
-                             'ZData', current_delta * 180/pi);
-            end
-        else
-            % Update 2D state-space marker
-            if ishandle(h_current)
-                set(h_current, 'XData', current_beta * 180/pi, ...
-                             'YData', current_gamma * 180/pi);
-            end
-        end
-        
-        % Update top-down car-centric view
-        % 1. Update grid position to create illusion of car movement
-        [grid_x, grid_y] = meshgrid(-visible_grid_size/2:grid_spacing:visible_grid_size/2, ...
-                                  -visible_grid_size/2:grid_spacing:visible_grid_size/2);
-        
-        % Translate grid points to car's frame
-        translated_x = grid_x - mod(current_x, grid_spacing);
-        translated_y = grid_y - mod(current_y, grid_spacing);
-        
-        % Rotate grid points around origin by -current_psi
-        rotated_x = translated_x * cos(-current_psi) - translated_y * sin(-current_psi);
-        rotated_y = translated_x * sin(-current_psi) + translated_y * cos(-current_psi);
-        
-        % Update grid points - convert to vectors for the plot function
-        set(h_grid, 'XData', rotated_x(:), 'YData', rotated_y(:));
-        set(h_grid_perp, 'XData', rotated_y(:), 'YData', rotated_x(:));
-        
-        % 2. Update wheel orientations for steering
-        % Only rotate front wheels to match steering angle
-        % Get the original wheel shapes
-        fl_wheel_x = get(h_wheel_fl, 'XData');
-        fl_wheel_y = get(h_wheel_fl, 'YData');
-        fr_wheel_x = get(h_wheel_fr, 'XData');
-        fr_wheel_y = get(h_wheel_fr, 'YData');
-        
-        % Calculate wheel center points
-        fl_center_x = mean(front_left_wheel(:,1));
-        fl_center_y = mean(front_left_wheel(:,2) + opts.carWidth/2 - wheel_width/2);
-        fr_center_x = mean(front_right_wheel(:,1));
-        fr_center_y = mean(front_right_wheel(:,2) - opts.carWidth/2 + wheel_width/2);
-        
-        % Rotate front wheels around their centers by the steering angle
-        fl_x_offset = fl_wheel_x - fl_center_x;
-        fl_y_offset = fl_wheel_y - fl_center_y;
-        fr_x_offset = fr_wheel_x - fr_center_x;
-        fr_y_offset = fr_wheel_y - fr_center_y;
-        
-        % Rotate offsets
-        fl_rotated_x = fl_x_offset * cos(current_delta) - fl_y_offset * sin(current_delta);
-        fl_rotated_y = fl_x_offset * sin(current_delta) + fl_y_offset * cos(current_delta);
-        fr_rotated_x = fr_x_offset * cos(current_delta) - fr_y_offset * sin(current_delta);
-        fr_rotated_y = fr_x_offset * sin(current_delta) + fr_y_offset * cos(current_delta);
-        
-        % Update wheel positions
-        set(h_wheel_fl, 'XData', fl_center_x + fl_rotated_x, 'YData', fl_center_y + fl_rotated_y);
-        set(h_wheel_fr, 'XData', fr_center_x + fr_rotated_x, 'YData', fr_center_y + fr_rotated_y);
-        
-        % 3. Update direction indicator
-        set(h_direction, 'UData', arrow_length * cos(current_delta), ...
-                         'VData', arrow_length * sin(current_delta));
-        
-        % 4. Update path trace (in car's reference frame)
-        % Calculate the last 100 points of the path in car's reference frame
-        look_back = 100;
-        start_idx = max(1, idx - look_back);
-        
-        % Transform the world path to car's reference frame
-        rel_path_x = [];
-        rel_path_y = [];
-        for i = start_idx:idx
-            % Vector from current position to path point
-            dx = x(i) - current_x;
-            dy = y(i) - current_y;
-            
-            % Rotate to car's reference frame
-            rx = dx * cos(-current_psi) - dy * sin(-current_psi);
-            ry = dx * sin(-current_psi) + dy * cos(-current_psi);
-            
-            rel_path_x = [rel_path_x, rx];
-            rel_path_y = [rel_path_y, ry];
-        end
-        
-        % Update path
-        set(h_path, 'XData', rel_path_x, 'YData', rel_path_y);
-        
-        % Ensure consistent axis limits
-        axes(left_panel);
-        axis equal;
-        xlim([-visible_grid_size_with_margin/2, visible_grid_size_with_margin/2]);
-        ylim([-visible_grid_size_with_margin/2, visible_grid_size_with_margin/2]);
-        
-        % Update display
-        drawnow;
-    end
-function updateFromTimer()
-            % Get current index 
-            current_idx = round(get(progress_bar, 'Value'));
-            next_idx = current_idx + 1;
-            
-            % Check if we've reached the end
-            if next_idx > length(traj_tau)
-                next_idx = 1;  % Loop back to beginning
-                % Or stop: 
-                % set(play_button, 'Value', 0, 'String', 'Play');
-                % is_playing = false;
-                % stop(play_timer);
-                % return;
-            end
-            
-            % Update slider position (which triggers visualization update)
-            set(progress_bar, 'Value', next_idx);
+% Callback function for the slider - will have access to figure's UserData
+function updateVisualizationCallback(src, ~)
+    % Get the userData from the figure
+    fig = get(src, 'Parent');
+    userData = get(fig, 'UserData');
+    
+    % Get the current index from the slider
+    idx = round(get(src, 'Value'));
+    
+    % Call the updateVisualization function with the userData
+    updateVisualization(idx, userData);
 end
 
- function togglePlayback(src)
-            is_playing = get(src, 'Value');
-            
-            if is_playing
-                % Start playback
-                set(src, 'String', 'Pause');
-                start(play_timer);
-            else
-                % Pause playback
-                set(src, 'String', 'Play');
-                stop(play_timer);
-            end
- end
-
- function onClose(~, ~)
-        % Clean up timer if it exists
-        if ~try_video && exist('play_timer', 'var') && isvalid(play_timer)
-            stop(play_timer);
-            delete(play_timer);
-        end
-        
-        % Close figure
-        delete(fig);
+% Callback function for the timer - will have access to figure's UserData
+function updateFromTimerCallback(~, ~)
+    % Find the figure with our visualization
+    fig = findobj('Type', 'figure', 'Name', 'Car Trajectory Visualization');
+    if isempty(fig)
+        return;
     end
+    
+    % Get the userData
+    userData = get(fig, 'UserData');
+    
+    % Get current index 
+    current_idx = round(get(userData.progress_bar, 'Value'));
+    next_idx = current_idx + 1;
+    
+    % Check if we've reached the end
+    if next_idx > length(userData.traj_tau)
+        next_idx = 1;  % Loop back to beginning
+        % Or stop: 
+        % set(play_button, 'Value', 0, 'String', 'Play');
+        % userData.is_playing = false;
+        % stop(userData.play_timer);
+        % set(fig, 'UserData', userData);
+        % return;
+    end
+    
+    % Update slider position
+    set(userData.progress_bar, 'Value', next_idx);
+    
+    % Update visualization
+    updateVisualization(next_idx, userData);
+end
+
+% Callback function for play/pause button
+function togglePlaybackCallback(src, ~)
+    % Get the figure and its userData
+    fig = get(src, 'Parent');
+    userData = get(fig, 'UserData');
+    
+    % Update playing state
+    userData.is_playing = get(src, 'Value');
+    set(fig, 'UserData', userData);
+    
+    if userData.is_playing
+        % Start playback
+        set(src, 'String', 'Pause');
+        start(userData.play_timer);
+    else
+        % Pause playback
+        set(src, 'String', 'Play');
+        stop(userData.play_timer);
+    end
+end
+
+% Function to handle figure closing
+function onClose(src, ~)
+    % Get userData from the figure
+    userData = get(src, 'UserData');
+    
+    % Clean up timer if it exists
+    if isfield(userData, 'play_timer') && isvalid(userData.play_timer)
+        stop(userData.play_timer);
+        delete(userData.play_timer);
+    end
+    
+    % Close figure
+    delete(src);
+end
+
+% Function to update the visualization for a specific frame index
+function updateVisualization(idx, userData)
+    % Get current state
+    current_time = userData.traj_tau(idx);
+    current_gamma = userData.gamma(idx);
+    current_beta = userData.beta(idx);
+    current_delta = userData.delta(idx);
+    current_psi = userData.psi(idx);
+    current_x = userData.x(idx);
+    current_y = userData.y(idx);
+    
+    % Update time display
+    set(userData.time_display, 'String', sprintf('Time: %.2f s', current_time));
+    
+    % Update state-space view
+    if userData.is_3d_brs
+        % Update 3D state-space marker
+        if ishandle(userData.h_current)
+            set(userData.h_current, 'XData', current_beta * 180/pi, ...
+                         'YData', current_gamma * 180/pi, ...
+                         'ZData', current_delta * 180/pi);
+        end
+    else
+        % Update 2D state-space marker
+        if ishandle(userData.h_current)
+            set(userData.h_current, 'XData', current_beta * 180/pi, ...
+                         'YData', current_gamma * 180/pi);
+        end
+    end
+    
+    % Update top-down car-centric view
+    % 1. Update grid position to create illusion of car movement
+    [grid_x, grid_y] = meshgrid(-userData.visible_grid_size/2:userData.grid_spacing:userData.visible_grid_size/2, ...
+                              -userData.visible_grid_size/2:userData.grid_spacing:userData.visible_grid_size/2);
+    
+    % Translate grid points to car's frame
+    translated_x = grid_x - mod(current_x, userData.grid_spacing);
+    translated_y = grid_y - mod(current_y, userData.grid_spacing);
+    
+    % Rotate grid points around origin by -current_psi
+    rotated_x = translated_x * cos(-current_psi) - translated_y * sin(-current_psi);
+    rotated_y = translated_x * sin(-current_psi) + translated_y * cos(-current_psi);
+    
+    % Update grid points - convert to vectors for the plot function
+    set(userData.h_grid, 'XData', rotated_x(:), 'YData', rotated_y(:));
+    set(userData.h_grid_perp, 'XData', rotated_y(:), 'YData', rotated_x(:));
+    
+    % 2. Update wheel orientations for steering
+    % Only rotate front wheels to match steering angle
+    % Get the original wheel shapes
+    fl_wheel_x = get(userData.h_wheel_fl, 'XData');
+    fl_wheel_y = get(userData.h_wheel_fl, 'YData');
+    fr_wheel_x = get(userData.h_wheel_fr, 'XData');
+    fr_wheel_y = get(userData.h_wheel_fr, 'YData');
+    
+    % Calculate wheel center points
+    fl_center_x = mean(userData.front_left_wheel(:,1));
+    fl_center_y = mean(userData.front_left_wheel(:,2) + userData.opts.carWidth/2 - userData.wheel_width/2);
+    fr_center_x = mean(userData.front_right_wheel(:,1));
+    fr_center_y = mean(userData.front_right_wheel(:,2) - userData.opts.carWidth/2 + userData.wheel_width/2);
+    
+    % Rotate front wheels around their centers by the steering angle
+    fl_x_offset = fl_wheel_x - fl_center_x;
+    fl_y_offset = fl_wheel_y - fl_center_y;
+    fr_x_offset = fr_wheel_x - fr_center_x;
+    fr_y_offset = fr_wheel_y - fr_center_y;
+    
+    % Rotate offsets
+    fl_rotated_x = fl_x_offset * cos(current_delta) - fl_y_offset * sin(current_delta);
+    fl_rotated_y = fl_x_offset * sin(current_delta) + fl_y_offset * cos(current_delta);
+    fr_rotated_x = fr_x_offset * cos(current_delta) - fr_y_offset * sin(current_delta);
+    fr_rotated_y = fr_x_offset * sin(current_delta) + fr_y_offset * cos(current_delta);
+    
+    % Update wheel positions
+    set(userData.h_wheel_fl, 'XData', fl_center_x + fl_rotated_x, 'YData', fl_center_y + fl_rotated_y);
+    set(userData.h_wheel_fr, 'XData', fr_center_x + fr_rotated_x, 'YData', fr_center_y + fr_rotated_y);
+    
+    % 3. Update direction indicator
+    set(userData.h_direction, 'UData', userData.arrow_length * cos(current_delta), ...
+                     'VData', userData.arrow_length * sin(current_delta));
+    
+    % 4. Update path trace (in car's reference frame)
+    % Calculate the last 100 points of the path in car's reference frame
+    look_back = 100;
+    start_idx = max(1, idx - look_back);
+    
+    % Transform the world path to car's reference frame
+    rel_path_x = [];
+    rel_path_y = [];
+    for i = start_idx:idx
+        % Vector from current position to path point
+        dx = userData.x(i) - current_x;
+        dy = userData.y(i) - current_y;
+        
+        % Rotate to car's reference frame
+        rx = dx * cos(-current_psi) - dy * sin(-current_psi);
+        ry = dx * sin(-current_psi) + dy * cos(-current_psi);
+        
+        rel_path_x = [rel_path_x, rx];
+        rel_path_y = [rel_path_y, ry];
+    end
+    
+    % Update path
+    set(userData.h_path, 'XData', rel_path_x, 'YData', rel_path_y);
+    
+    % Ensure consistent axis limits
+    axes(userData.left_panel);
+    axis equal;
+    xlim([-userData.visible_grid_size_with_margin/2, userData.visible_grid_size_with_margin/2]);
+    ylim([-userData.visible_grid_size_with_margin/2, userData.visible_grid_size_with_margin/2]);
+    
+    % Update display
+    drawnow;
+end
