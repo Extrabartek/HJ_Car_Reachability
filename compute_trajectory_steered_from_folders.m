@@ -80,13 +80,9 @@ end
 
 %% Create output folder if saving plots
 if opts.savePlots
-    if isempty(opts.output_folder)
-        opts.output_folder = fullfile(pwd, 'trajectory_steered_results');
-    end
-    
-    if ~exist(opts.output_folder, 'dir')
-        mkdir(opts.output_folder);
-        fprintf('Created output directory: %s\n', opts.output_folder);
+    if ~exist(fullfile(brs_folder, 'figures'), 'dir')
+        mkdir(fullfile(brs_folder, 'figures'));
+        fprintf('Created output directory: %s\n', fullfile(brs_folder, 'figures'));
     end
 end
 
@@ -322,7 +318,7 @@ if opts.savePlots
     
     % Save figure
     if opts.visualize
-        fig_filename = fullfile(opts.output_folder, [base_filename, '.png']);
+        fig_filename = fullfile(brs_folder,'figures',[base_filename, '.png']);
         saveas(gcf, fig_filename);
         fprintf('Saved figure to %s\n', fig_filename);
     end
