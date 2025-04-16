@@ -44,7 +44,7 @@ delta_slice = [];         % Which delta slice to visualize (default: middle slic
 
 %% Save options
 save_results = true;                  % Whether to save trajectory data
-save_plots = true;                    % Whether to save visualization plots
+save_plots = false;                    % Whether to save visualization plots
 output_folder = brs_folder;           % Save results to the same folder as BRS data
 
 %% Compute the optimal trajectory
@@ -64,13 +64,12 @@ output_folder = brs_folder;           % Save results to the same folder as BRS d
 
 % Display success message
 fprintf('\nTrajectory computation completed successfully!\n');
-
+timestamp = datestr(now, 'yyyymmdd_HHMMSS');
 %% Manual save trajectory data (if not using the built-in save option)
 if save_results && ~save_plots  % Only needed if we want to save data but not plots
     % Create descriptive filename
-    timestamp = datestr(now, 'yyyymmdd_HHMMSS');
     init_str = [num2str(xinit(1) * 180/pi, '%.1f'), '_', num2str(xinit(2) * 180/pi, '%.1f'), '_', num2str(xinit(3) * 180/pi, '%.1f')];
-    filename = fullfile(output_folder, ['trajectory_', init_str, '_', timestamp, '.mat']);
+    filename = fullfile(output_folder, ['trajectory_', init_str, '.mat']);
     
     % Save trajectory data
     save(filename, 'traj', 'traj_tau', 'traj_u', 'metrics', 'xinit');
