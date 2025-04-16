@@ -383,61 +383,132 @@ try
     xlim([-visible_grid_size_with_margin/2, visible_grid_size_with_margin/2]);
     ylim([-visible_grid_size_with_margin/2, visible_grid_size_with_margin/2]);
 
-    %% Create progress bar and time display
+    %% Create progress bar, time display, and play/pause button
+    % Slider for time control
     progress_bar = uicontrol('Style', 'slider', ...
                             'Min', 1, 'Max', length(traj_tau), ...
                             'Value', 1, ...
                             'SliderStep', [1/length(traj_tau), 10/length(traj_tau)], ...
-                            'Position', [200, 20, 1200, 20]);
+                            'Position', [200, 20, 1000, 20]);
 
+    % Time display
     time_display = uicontrol('Style', 'text', ...
                              'String', sprintf('Time: %.2f s', traj_tau(1)), ...
                              'Position', [800, 45, 200, 20], ...
                              'BackgroundColor', 'white', ...
                              'FontSize', 12);
 
+    % Play/Pause button (only when not saving video)
+    if ~try_video
+        play_button = uicontrol('Style', 'togglebutton', ...
+                               'String', 'Play', ...
+                               'Position', [50, 20, 100, 30], ...
+                               'Value', 0);
+    end
+
     % Add title to the figure
     sgtitle(sprintf('Car Trajectory Visualization (v_x = %.1f m/s)', vx), ...
             'FontSize', 16, 'FontWeight', 'bold');
+    
 
-    %% Animation
-    fprintf('Starting animation...\n');
-
-    % Calculate number of frames and frame times
-    total_time = traj_tau(end) - traj_tau(1);
+    % Setup callback for slider
+    set(progress_bar, 'Callback', @(src, ~) updateVisualization(round(get(src, 'Value'))));
+    % Setup callback for play button
+    if ~try_video
+        is_playing = false;
+        play_timer = timer('Period', 0.05, 'ExecutionMode', 'fixedRate');
+        
+        % Timer callback function
+        play_timer.TimerFcn = @(~, ~) updateFromTimer();
+        
+        % Play button callback
+        set(play_button, 'Callback', @(src, ~) togglePlayback(src));
+        
+    end
+    
+    %% Animation or interactive mode
     if try_video
+        % Animation loop for video recording
+        fprintf('Starting animation for video recording...\n');
+        
+        % Calculate number of frames and frame times
+        total_time = traj_tau(end) - traj_tau(1);
+        
         % For video: create a specific number of evenly-spaced frames
         num_frames = ceil(total_time * opts.frameRate / opts.playSpeed);
         frame_times = linspace(traj_tau(1), traj_tau(end), num_frames);
-    else
-        % For display: just use the original time points
-        frame_times = traj_tau;
-        num_frames = length(frame_times);
-    end
-
-    % Animation loop
-    for frame = 1:num_frames
-        % Get the current time for this frame
-        if try_video
+        
+        % Animation loop
+        for frame = 1:num_frames
+            % Get the current time for this frame
             current_time = frame_times(frame);
+            
             % Find the index in the original trajectory closest to current time
             [~, idx] = min(abs(traj_tau - current_time));
-        else
-            idx = frame;
-            current_time = traj_tau(idx);
+            
+            % Update visualization
+            updateVisualization(idx);
+            
+            % Capture frame for video
+            frame_data = getframe(fig);
+            writeVideo(v, frame_data);
+            
+            % Show progress
+            if mod(frame, 10) == 0
+                fprintf('Recording: %.1f%% complete\n', 100 * frame / num_frames);
+            end
         end
         
-        % Update progress bar and time display
-        set(progress_bar, 'Value', idx);
-        set(time_display, 'String', sprintf('Time: %.2f s', current_time));
-        
+        % Close video file
+        close(v);
+        fprintf('Video saved successfully to: %s\n', opts.videoFile);
+    else
+        % Interactive mode - show the initial frame
+        updateVisualization(1);
+        fprintf('Interactive mode ready. Use the slider to navigate or click Play to animate.\n');
+    end
+
+    % Setup cleanup when figure is closed
+    set(fig, 'CloseRequestFcn', @onClose);
+    
+    fprintf('Visualization complete.\n');
+    
+catch err
+    % Handle any errors
+    fprintf('Visualization failed: %s\n', err.message);
+    
+    % If we were trying to record video and it failed, try without video
+    if try_video
+        try_video = false;
+        fprintf('Attempting visualization without video recording...\n');
+        visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, ...
+            'x0', opts.x0, 'y0', opts.y0, 'psi0', opts.psi0, ...
+            'saveVideo', false, ...
+            'carLength', opts.carLength, ...
+            'carWidth', opts.carWidth, ...
+            'wheelBase', opts.wheelBase, ...
+            'gridSize', opts.gridSize);
+    end
+end
+
+end
+
+% Define a function to update the visualization for a specific frame index
+    function updateVisualization(idx)
         % Get current state
+        current_time = traj_tau(idx);
         current_gamma = gamma(idx);
         current_beta = beta(idx);
         current_delta = delta(idx);
         current_psi = psi(idx);
         current_x = x(idx);
         current_y = y(idx);
+        
+        % Update time display
+        set(time_display, 'String', sprintf('Time: %.2f s', current_time));
+        
+        % Update progress bar
+        set(progress_bar, 'Value', idx);
         
         % Update state-space view
         if is_3d_brs
@@ -536,50 +607,49 @@ try
         xlim([-visible_grid_size_with_margin/2, visible_grid_size_with_margin/2]);
         ylim([-visible_grid_size_with_margin/2, visible_grid_size_with_margin/2]);
         
-        % Capture frame if recording video
-        if try_video
-            frame_data = getframe(fig);
-            writeVideo(v, frame_data);
-            
-            % Show progress
-            if mod(frame, 10) == 0
-                fprintf('Recording: %.1f%% complete\n', 100 * frame / num_frames);
-            end
-        end
-        
         % Update display
         drawnow;
-        
-        % Add a small pause if not recording to make animation smoother
-        if ~try_video
-            pause(0.01);
+    end
+function updateFromTimer()
+            % Get current index 
+            current_idx = round(get(progress_bar, 'Value'));
+            next_idx = current_idx + 1;
+            
+            % Check if we've reached the end
+            if next_idx > length(traj_tau)
+                next_idx = 1;  % Loop back to beginning
+                % Or stop: 
+                % set(play_button, 'Value', 0, 'String', 'Play');
+                % is_playing = false;
+                % stop(play_timer);
+                % return;
+            end
+            
+            % Update slider position (which triggers visualization update)
+            set(progress_bar, 'Value', next_idx);
+end
+
+ function togglePlayback(src)
+            is_playing = get(src, 'Value');
+            
+            if is_playing
+                % Start playback
+                set(src, 'String', 'Pause');
+                start(play_timer);
+            else
+                % Pause playback
+                set(src, 'String', 'Play');
+                stop(play_timer);
+            end
+ end
+
+ function onClose(~, ~)
+        % Clean up timer if it exists
+        if ~try_video && exist('play_timer', 'var') && isvalid(play_timer)
+            stop(play_timer);
+            delete(play_timer);
         end
+        
+        % Close figure
+        delete(fig);
     end
-
-    % Close video file if recording
-    if try_video
-        close(v);
-        fprintf('Video saved successfully to: %s\n', opts.videoFile);
-    end
-
-    fprintf('Visualization complete.\n');
-    
-catch err
-    % Handle any errors
-    fprintf('Visualization failed: %s\n', err.message);
-    
-    % If we were trying to record video and it failed, try without video
-    if try_video
-        try_video = false;
-        fprintf('Attempting visualization without video recording...\n');
-        visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, ...
-            'x0', opts.x0, 'y0', opts.y0, 'psi0', opts.psi0, ...
-            'saveVideo', false, ...
-            'carLength', opts.carLength, ...
-            'carWidth', opts.carWidth, ...
-            'wheelBase', opts.wheelBase, ...
-            'gridSize', opts.gridSize);
-    end
-end
-
-end
