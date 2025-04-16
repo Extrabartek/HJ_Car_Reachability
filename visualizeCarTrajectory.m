@@ -325,6 +325,13 @@ try
     
     % The car should be rotated by -initial_beta to align velocity vector with car's x-axis
     car_rotation = -initial_beta;
+
+    % Plot the full path
+    h_full_path = plot(x, y, 'b-', 'LineWidth', 2);
+    
+    % Mark start and end positions
+    plot(x(1), y(1), 'bo', 'MarkerSize', 10, 'MarkerFaceColor', 'b');
+    plot(x(end), y(end), 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
     
     % Create car shape - pre-rotated to match initial velocity direction
     car_color = [0.3, 0.5, 0.8];  % Light blue
@@ -452,15 +459,9 @@ try
     initial_arrow_angle = car_rotation + delta(1); % Initial steering angle plus car rotation
     h_direction = quiver(0, 0, arrow_length * cos(initial_arrow_angle), arrow_length * sin(initial_arrow_angle), 0, 'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
 
-    % Reference point (trajectory path)
-    h_path = plot(0, 0, 'b-', 'LineWidth', 2);
 
-    % Plot the full path
-    h_full_path = plot(x, y, 'b-', 'LineWidth', 2);
-    
-    % Mark start and end positions
-    plot(x(1), y(1), 'bo', 'MarkerSize', 10, 'MarkerFaceColor', 'b');
-    plot(x(end), y(end), 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
+    % Create velocity vector arrow (initially at origin)
+    h_velocity_vector = quiver(0, 0, 0, 0, 0, 'g', 'LineWidth', 2, 'MaxHeadSize', 0.5);
 
     % Set up axes properties
     axis equal;
@@ -533,12 +534,13 @@ try
         'wheel_width', wheel_width, ...
         'h_direction', h_direction, ...
         'arrow_length', arrow_length, ...
-        'h_path', h_path, ...
+        'h_path', h_full_path, ...
         'visible_grid_size_with_margin', visible_grid_size_with_margin, ...
         'is_3d_brs', is_3d_brs, ...
         'time_display', time_display, ...
         'left_panel', left_panel, ...
-        'car_outline', car_outline ...
+        'car_outline', car_outline, ...
+        'h_velocity_vector', h_velocity_vector ...
         );
     
     % Store the userData in the figure for access by callbacks
@@ -729,7 +731,6 @@ function onClose(src, ~)
     delete(src);
 end
 
-% Function to update the visualization for a specific frame index
 function updateVisualization(idx, userData)
     % Get current state
     current_time = userData.traj_tau(idx);
@@ -759,42 +760,212 @@ function updateVisualization(idx, userData)
         end
     end
     
-    % Update car position and orientation in the global view
-    % 1. Update car body position
-    % Rotate and translate car outline
-    rotated_car = rotatePoints(userData.car_outline, current_psi);
-    translated_car = translatePoints(rotated_car, [current_x, current_y]);
-    set(userData.h_car, 'XData', translated_car(:,1), 'YData', translated_car(:,2));
+    % ===== FIX: PROPERLY ROTATE AND POSITION THE CAR AND WHEELS =====
     
-    % 2. Update wheels positions and orientations
-    % First the rear wheels (only rotate with car body)
-    rotated_rl = rotatePoints(userData.rear_left_wheel, current_psi);
-    rotated_rr = rotatePoints(userData.rear_right_wheel, current_psi);
-    translated_rl = translatePoints(rotated_rl, [current_x, current_y]);
-    translated_rr = translatePoints(rotated_rr, [current_x, current_y]);
+    % 1. Get car dimensions from userData
+    car_length = userData.opts.carLength;
+    car_width = userData.opts.carWidth;
+    wheel_base = userData.opts.wheelBase;
+    front_overhang = (car_length - wheel_base) * 0.4;
+    rear_overhang = (car_length - wheel_base) * 0.6;
+    wheel_width = car_width * 0.3;
+    wheel_length = car_length * 0.15;
+    
+    % 2. Create car shape in local coordinates (centered at origin)
+    car_outline = [
+        -rear_overhang, car_width/2;   % Rear left
+        wheel_base + front_overhang, car_width/2;   % Front left
+        wheel_base + front_overhang, -car_width/2;  % Front right
+        -rear_overhang, -car_width/2;  % Rear right
+        -rear_overhang, car_width/2    % Back to rear left (close the shape)
+    ];
+    
+    % 3. Create wheel shapes in local coordinates
+    % Rear left wheel
+    rl_wheel_x = 0; % At the rear axle
+    rl_wheel_y = car_width/2 - wheel_width/2;
+    rear_left_wheel = [
+        rl_wheel_x, rl_wheel_y;
+        rl_wheel_x + wheel_length, rl_wheel_y;
+        rl_wheel_x + wheel_length, rl_wheel_y - wheel_width;
+        rl_wheel_x, rl_wheel_y - wheel_width;
+        rl_wheel_x, rl_wheel_y
+    ];
+    
+    % Rear right wheel
+    rr_wheel_x = 0; % At the rear axle
+    rr_wheel_y = -car_width/2 + wheel_width/2;
+    rear_right_wheel = [
+        rr_wheel_x, rr_wheel_y;
+        rr_wheel_x + wheel_length, rr_wheel_y;
+        rr_wheel_x + wheel_length, rr_wheel_y - wheel_width;
+        rr_wheel_x, rr_wheel_y - wheel_width;
+        rr_wheel_x, rr_wheel_y
+    ];
+    
+    % Front left wheel (will be rotated by steering angle later)
+    fl_wheel_x = wheel_base; % At the front axle
+    fl_wheel_y = car_width/2 - wheel_width/2;
+    front_left_wheel = [
+        fl_wheel_x, fl_wheel_y;
+        fl_wheel_x + wheel_length, fl_wheel_y;
+        fl_wheel_x + wheel_length, fl_wheel_y - wheel_width;
+        fl_wheel_x, fl_wheel_y - wheel_width;
+        fl_wheel_x, fl_wheel_y
+    ];
+    
+    % Front right wheel (will be rotated by steering angle later)
+    fr_wheel_x = wheel_base; % At the front axle
+    fr_wheel_y = -car_width/2 + wheel_width/2;
+    front_right_wheel = [
+        fr_wheel_x, fr_wheel_y;
+        fr_wheel_x + wheel_length, fr_wheel_y;
+        fr_wheel_x + wheel_length, fr_wheel_y - wheel_width;
+        fr_wheel_x, fr_wheel_y - wheel_width;
+        fr_wheel_x, fr_wheel_y
+    ];
+    
+    % 4. Apply steering angle to front wheels
+    % Calculate the center of front left wheel
+    fl_center_x = fl_wheel_x + wheel_length/2;
+    fl_center_y = fl_wheel_y - wheel_width/2;
+    
+    % Calculate the center of front right wheel
+    fr_center_x = fr_wheel_x + wheel_length/2;
+    fr_center_y = fr_wheel_y - wheel_width/2;
+    
+    % Steer front wheels (rotate around their centers)
+    % Front left wheel
+    rotated_fl = zeros(size(front_left_wheel));
+    for i = 1:size(front_left_wheel, 1)
+        % Calculate offset from center
+        x_offset = front_left_wheel(i,1) - fl_center_x;
+        y_offset = front_left_wheel(i,2) - fl_center_y;
+        
+        % Rotate by steering angle
+        x_rotated = x_offset * cos(-current_delta) - y_offset * sin(-current_delta);
+        y_rotated = x_offset * sin(-current_delta) + y_offset * cos(-current_delta);
+        
+        % Move back to position relative to center
+        rotated_fl(i,1) = fl_center_x + x_rotated;
+        rotated_fl(i,2) = fl_center_y + y_rotated;
+    end
+    
+    % Front right wheel
+    rotated_fr = zeros(size(front_right_wheel));
+    for i = 1:size(front_right_wheel, 1)
+        % Calculate offset from center
+        x_offset = front_right_wheel(i,1) - fr_center_x;
+        y_offset = front_right_wheel(i,2) - fr_center_y;
+        
+        % Rotate by steering angle
+        x_rotated = x_offset * cos(-current_delta) - y_offset * sin(-current_delta);
+        y_rotated = x_offset * sin(-current_delta) + y_offset * cos(-current_delta);
+        
+        % Move back to position relative to center
+        rotated_fr(i,1) = fr_center_x + x_rotated;
+        rotated_fr(i,2) = fr_center_y + y_rotated;
+    end
+    
+    % 5. Apply car heading (psi) rotation to everything
+    % First rotate car outline
+    rotated_car = zeros(size(car_outline));
+    for i = 1:size(car_outline, 1)
+        rotated_car(i,1) = car_outline(i,1) * cos(current_psi) - car_outline(i,2) * sin(current_psi);
+        rotated_car(i,2) = car_outline(i,1) * sin(current_psi) + car_outline(i,2) * cos(current_psi);
+    end
+    
+    % Rotate rear wheels
+    rotated_rl = zeros(size(rear_left_wheel));
+    for i = 1:size(rear_left_wheel, 1)
+        rotated_rl(i,1) = rear_left_wheel(i,1) * cos(current_psi) - rear_left_wheel(i,2) * sin(current_psi);
+        rotated_rl(i,2) = rear_left_wheel(i,1) * sin(current_psi) + rear_left_wheel(i,2) * cos(current_psi);
+    end
+    
+    rotated_rr = zeros(size(rear_right_wheel));
+    for i = 1:size(rear_right_wheel, 1)
+        rotated_rr(i,1) = rear_right_wheel(i,1) * cos(current_psi) - rear_right_wheel(i,2) * sin(current_psi);
+        rotated_rr(i,2) = rear_right_wheel(i,1) * sin(current_psi) + rear_right_wheel(i,2) * cos(current_psi);
+    end
+    
+    % Apply heading rotation to already-steered front wheels
+    rotated_fl_final = zeros(size(rotated_fl));
+    for i = 1:size(rotated_fl, 1)
+        rotated_fl_final(i,1) = rotated_fl(i,1) * cos(current_psi) - rotated_fl(i,2) * sin(current_psi);
+        rotated_fl_final(i,2) = rotated_fl(i,1) * sin(current_psi) + rotated_fl(i,2) * cos(current_psi);
+    end
+    
+    rotated_fr_final = zeros(size(rotated_fr));
+    for i = 1:size(rotated_fr, 1)
+        rotated_fr_final(i,1) = rotated_fr(i,1) * cos(current_psi) - rotated_fr(i,2) * sin(current_psi);
+        rotated_fr_final(i,2) = rotated_fr(i,1) * sin(current_psi) + rotated_fr(i,2) * cos(current_psi);
+    end
+    
+    % 6. Translate everything to current position
+    translated_car = zeros(size(rotated_car));
+    for i = 1:size(rotated_car, 1)
+        translated_car(i,1) = rotated_car(i,1) + current_x;
+        translated_car(i,2) = rotated_car(i,2) + current_y;
+    end
+    
+    translated_rl = zeros(size(rotated_rl));
+    for i = 1:size(rotated_rl, 1)
+        translated_rl(i,1) = rotated_rl(i,1) + current_x;
+        translated_rl(i,2) = rotated_rl(i,2) + current_y;
+    end
+    
+    translated_rr = zeros(size(rotated_rr));
+    for i = 1:size(rotated_rr, 1)
+        translated_rr(i,1) = rotated_rr(i,1) + current_x;
+        translated_rr(i,2) = rotated_rr(i,2) + current_y;
+    end
+    
+    translated_fl = zeros(size(rotated_fl_final));
+    for i = 1:size(rotated_fl_final, 1)
+        translated_fl(i,1) = rotated_fl_final(i,1) + current_x;
+        translated_fl(i,2) = rotated_fl_final(i,2) + current_y;
+    end
+    
+    translated_fr = zeros(size(rotated_fr_final));
+    for i = 1:size(rotated_fr_final, 1)
+        translated_fr(i,1) = rotated_fr_final(i,1) + current_x;
+        translated_fr(i,2) = rotated_fr_final(i,2) + current_y;
+    end
+    
+    % 7. Update all graphical objects
+    set(userData.h_car, 'XData', translated_car(:,1), 'YData', translated_car(:,2));
     set(userData.h_wheel_rl, 'XData', translated_rl(:,1), 'YData', translated_rl(:,2));
     set(userData.h_wheel_rr, 'XData', translated_rr(:,1), 'YData', translated_rr(:,2));
-    
-    % Then the front wheels (rotate with car body + steering angle)
-    % First rotate front wheels around their centers by the steering angle
-    rotated_fl = rotatePoints(userData.front_left_wheel, current_delta);
-    rotated_fr = rotatePoints(userData.front_right_wheel, current_delta);
-    
-    % Then rotate them with the car body
-    rotated_fl = rotatePoints(rotated_fl, current_psi);
-    rotated_fr = rotatePoints(rotated_fr, current_psi);
-    
-    % Finally translate to car position
-    translated_fl = translatePoints(rotated_fl, [current_x, current_y]);
-    translated_fr = translatePoints(rotated_fr, [current_x, current_y]);
-    
     set(userData.h_wheel_fl, 'XData', translated_fl(:,1), 'YData', translated_fl(:,2));
     set(userData.h_wheel_fr, 'XData', translated_fr(:,1), 'YData', translated_fr(:,2));
     
-    % 3. Update direction indicator
+    % 8. Update direction indicator (steering direction arrow)
+    arrow_length = userData.arrow_length;
+    arrow_angle = current_psi - current_delta;
     set(userData.h_direction, 'XData', current_x, 'YData', current_y, ...
-                    'UData', userData.arrow_length * cos(current_psi + current_delta), ...
-                    'VData', userData.arrow_length * sin(current_psi + current_delta));
+                   'UData', arrow_length * cos(arrow_angle), ...
+                   'VData', arrow_length * sin(arrow_angle));
+
+    % Calculate and update velocity vector
+    % Get velocity components in body frame
+    vx_body = userData.opts.vx;  % Constant longitudinal velocity
+    vy_body = vx_body * tan(current_beta);  % Lateral velocity from sideslip angle
+    
+    % Rotate to global frame
+    vx_global = vx_body * cos(current_psi) - vy_body * sin(current_psi);
+    vy_global = vx_body * sin(current_psi) + vy_body * cos(current_psi);
+    
+    % Scale for visualization (adjust scale_factor as needed for good visibility)
+    scale_factor = 0.2;
+    vx_scaled = vx_global * scale_factor;
+    vy_scaled = vy_global * scale_factor;
+    
+    % Update velocity vector
+    set(userData.h_velocity_vector, 'XData', current_x, 'YData', current_y, ...
+                      'UData', vx_scaled, 'VData', vy_scaled);
+    
+    % 9. Update any other elements as needed (like the grid points, path, etc.)
+    % (The existing code for those elements can remain unchanged)
     
     % Update display
     drawnow;

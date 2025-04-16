@@ -14,7 +14,7 @@ brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250402_091041_
 
 %% Define the initial state for trajectory computation
 % Format: [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
-xinit = [deg2rad(0); deg2rad(25); deg2rad(0)];
+xinit = [deg2rad(0); deg2rad(25); deg2rad(-7)];
 
 %% Set parameters for trajectory computation and visualization
 compute_new_trajectory = true;  % Set to false to load a previously saved trajectory
