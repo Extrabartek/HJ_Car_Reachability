@@ -124,6 +124,7 @@ try
 
     %% Setup 3D state-space view (right panel)
     axes(right_panel);
+    hold on;
 
     if is_3d_brs
         % Create 3D visualization with isosurfaces

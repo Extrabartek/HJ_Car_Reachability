@@ -27,7 +27,7 @@ car_length = 4.5;               % Car length in meters
 car_width = 1.8;                % Car width in meters
 wheel_base = 2.7;               % Distance between axles in meters
 grid_size = 20;                 % Size of the grid in the car view
-save_video = true;              % Whether to save as video
+save_video = false;              % Whether to save as video
 video_file = 'car_trajectory.avi';  % Using .avi extension for compatibility
 
 %% Load or compute trajectory
