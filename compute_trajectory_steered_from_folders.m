@@ -326,12 +326,6 @@ if opts.savePlots
         saveas(gcf, fig_filename);
         fprintf('Saved figure to %s\n', fig_filename);
     end
-    
-    % Save data
-    data_filename = fullfile(opts.output_folder, [base_filename, '.mat']);
-    save(data_filename, 'traj', 'traj_tau', 'traj_u', 'traj_metrics', ...
-         'xinit', 'velocities', 'dvmax_values', 'finalSet', 'opts');
-    fprintf('Saved trajectory data to %s\n', data_filename);
 end
 
 %% Display summary
