@@ -10,24 +10,24 @@ close all;
 %% Define folder paths to your BRS results
 % Replace with your actual path to BRS results folder
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250415_161304_vx30-30_dvmax20-20');
+brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250402_091041_vx30-30_dvmax20-20');
 
 %% Define the initial state for trajectory computation
 % Format: [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
-xinit = [deg2rad(150); deg2rad(20); deg2rad(7.5)];
+xinit = [deg2rad(0); deg2rad(25); deg2rad(0)];
 
 %% Set parameters for trajectory computation and visualization
 compute_new_trajectory = true;  % Set to false to load a previously saved trajectory
 velocity_idx = 1;               % Index of velocity to use from BRS data
 dv_max_idx = 1;                 % Index of steering rate limit to use
-max_time = 2.0;                 % Maximum trajectory time (seconds)
+max_time = 3.0;                 % Maximum trajectory time (seconds)
 
 % Car visualization parameters
 car_length = 4.5;               % Car length in meters
 car_width = 1.8;                % Car width in meters
 wheel_base = 2.7;               % Distance between axles in meters
 grid_size = 20;                 % Size of the grid in the car view
-save_video = false;              % Whether to save as video
+save_video = true;              % Whether to save as video
 video_file = 'car_trajectory.avi';  % Using .avi extension for compatibility
 
 %% Load or compute trajectory
@@ -92,9 +92,9 @@ end
 try
     fprintf('Creating car trajectory visualization...\n');
     
-    % Ensure the transformTrajectory function is available
-    if ~exist('transformTrajectory', 'file')
-        error(['The transformTrajectory function is not found in the MATLAB path. ', ...
+    % Ensure the visualizeCarTrajectory function is available
+    if ~exist('visualizeCarTrajectory', 'file')
+        error(['The visualizeCarTrajectory function is not found in the MATLAB path. ', ...
                'Please ensure it is available.']);
     end
     

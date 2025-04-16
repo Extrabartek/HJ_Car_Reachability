@@ -2,8 +2,8 @@ function visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, varargin
 % VISUALIZECARTRAJECTORY Creates dual-view visualization of car trajectory
 %
 % This function creates a synchronized visualization with two views:
-% 1. 3D state-space view (right): Shows trajectory in state space with BRS and target set
-% 2. Top-down car-centric view (left): Shows car fixed at center with the world moving underneath
+% 1. Global top-down view (left): Shows the full path with car moving along it
+% 2. 3D state-space view (right): Shows trajectory in state space with BRS and target set
 %
 % Inputs:
 %   traj        - State trajectory [gamma; beta; delta] over time
@@ -27,7 +27,7 @@ function visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, varargin
 %                 'carLength'    - Car length in meters (default: 4.5)
 %                 'carWidth'     - Car width in meters (default: 2.0)
 %                 'wheelBase'    - Distance between axles (default: 2.7)
-%                 'gridSize'     - Size of the grid in the car view (default: 20)
+%                 'gridSize'     - Size of the grid in meters (default: 20)
 %                 'isoValue'     - Value for isosurface (default: 0)
 %                 'brsOpacity'   - Opacity for BRS isosurface (default: 0.3)
 %                 'targetOpacity'- Opacity for target isosurface (default: 0.5)
@@ -296,30 +296,48 @@ try
               ax_limits(3)-axis_margin, ax_limits(4)+axis_margin]);
     end
 
-    %% Setup top-down car-centric view (left panel)
+    %% Setup top-down global view (left panel)
     axes(left_panel);
-
-    % Define grid size
-    grid_size = opts.gridSize;
-    grid_spacing = 2;  % meters between grid lines
-    visible_grid_size = grid_size * grid_spacing;
-
-    % Create initial grid (this will be updated during animation)
-    [grid_x, grid_y] = meshgrid(-visible_grid_size/2:grid_spacing:visible_grid_size/2, ...
-                               -visible_grid_size/2:grid_spacing:visible_grid_size/2);
-                           
-    % Convert the meshgrid outputs to vectors for plotting
-    grid_x_vec = grid_x(:);
-    grid_y_vec = grid_y(:);
-    
-    % Create the grid with vectors instead of matrices
-    h_grid = plot(grid_x_vec, grid_y_vec, 'k.', 'MarkerSize', 3);
     hold on;
-    
-    % Add perpendicular grid lines
-    h_grid_perp = plot(grid_y_vec, grid_x_vec, 'k.', 'MarkerSize', 3);
 
-    % Create car shape
+    % Calculate the boundary of the path
+    min_x = min(x) - opts.carLength;
+    max_x = max(x) + opts.carLength;
+    min_y = min(y) - opts.carLength;
+    max_y = max(y) + opts.carLength;
+    
+    % Add some margin
+    width = max_x - min_x;
+    height = max_y - min_y;
+    margin = max(width, height) * 0.15;
+    
+    min_x = min_x - margin;
+    max_x = max_x + margin;
+    min_y = min_y - margin;
+    max_y = max_y + margin;
+    
+    % Create a grid in the global frame
+    grid_spacing = 5;  % meters between grid lines
+    grid_x = min_x:grid_spacing:max_x;
+    grid_y = min_y:grid_spacing:max_y;
+    
+    % Draw grid lines
+    for i = 1:length(grid_x)
+        plot([grid_x(i) grid_x(i)], [min_y max_y], 'Color', [0.8 0.8 0.8], 'LineWidth', 0.5);
+    end
+    
+    for i = 1:length(grid_y)
+        plot([min_x max_x], [grid_y(i) grid_y(i)], 'Color', [0.8 0.8 0.8], 'LineWidth', 0.5);
+    end
+    
+    % Plot the full path
+    h_full_path = plot(x, y, 'b-', 'LineWidth', 2);
+    
+    % Mark start and end positions
+    plot(x(1), y(1), 'bo', 'MarkerSize', 10, 'MarkerFaceColor', 'b');
+    plot(x(end), y(end), 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
+    
+    % Create car shape (will be updated during animation)
     car_color = [0.3, 0.5, 0.8];  % Light blue
     car_outline = [
         -rear_overhang, opts.carWidth/2;   % Rear left
@@ -328,9 +346,14 @@ try
         -rear_overhang, -opts.carWidth/2;  % Rear right
         -rear_overhang, opts.carWidth/2    % Back to rear left (close the shape)
     ];
-
+    
+    % Initialize car at the first position
+    % Apply initial rotation and translation
+    rotated_car = rotatePoints(car_outline, psi(1));
+    translated_car = translatePoints(rotated_car, [x(1), y(1)]);
+    
     % Create car shape
-    h_car = patch('XData', car_outline(:,1), 'YData', car_outline(:,2), ...
+    h_car = patch('XData', translated_car(:,1), 'YData', translated_car(:,2), ...
                   'FaceColor', car_color, 'EdgeColor', 'k', 'LineWidth', 1.5);
 
     % Create wheels (rectangles)
@@ -351,37 +374,49 @@ try
     rear_right_wheel = front_right_wheel;
     rear_right_wheel(:,1) = rear_right_wheel(:,1) - opts.wheelBase;
 
+    % Adjust wheel positions
+    front_left_wheel(:,2) = front_left_wheel(:,2) + opts.carWidth/2 - wheel_width/2;
+    front_right_wheel(:,2) = front_right_wheel(:,2) - opts.carWidth/2 + wheel_width/2;
+    rear_left_wheel(:,2) = rear_left_wheel(:,2) + opts.carWidth/2 - wheel_width/2;
+    rear_right_wheel(:,2) = rear_right_wheel(:,2) - opts.carWidth/2 + wheel_width/2;
+    
+    % Rotate and translate wheels
+    rotated_fl = rotatePoints(front_left_wheel, psi(1));
+    rotated_fr = rotatePoints(front_right_wheel, psi(1));
+    rotated_rl = rotatePoints(rear_left_wheel, psi(1));
+    rotated_rr = rotatePoints(rear_right_wheel, psi(1));
+    
+    translated_fl = translatePoints(rotated_fl, [x(1), y(1)]);
+    translated_fr = translatePoints(rotated_fr, [x(1), y(1)]);
+    translated_rl = translatePoints(rotated_rl, [x(1), y(1)]);
+    translated_rr = translatePoints(rotated_rr, [x(1), y(1)]);
+    
     % Create wheel patches
-    h_wheel_fl = patch('XData', front_left_wheel(:,1), 'YData', front_left_wheel(:,2) + opts.carWidth/2 - wheel_width/2, ...
+    h_wheel_fl = patch('XData', translated_fl(:,1), 'YData', translated_fl(:,2), ...
                       'FaceColor', 'k', 'EdgeColor', 'k');
-    h_wheel_fr = patch('XData', front_right_wheel(:,1), 'YData', front_right_wheel(:,2) - opts.carWidth/2 + wheel_width/2, ...
+    h_wheel_fr = patch('XData', translated_fr(:,1), 'YData', translated_fr(:,2), ...
                       'FaceColor', 'k', 'EdgeColor', 'k');
-    h_wheel_rl = patch('XData', rear_left_wheel(:,1), 'YData', rear_left_wheel(:,2) + opts.carWidth/2 - wheel_width/2, ...
+    h_wheel_rl = patch('XData', translated_rl(:,1), 'YData', translated_rl(:,2), ...
                       'FaceColor', 'k', 'EdgeColor', 'k');
-    h_wheel_rr = patch('XData', rear_right_wheel(:,1), 'YData', rear_right_wheel(:,2) - opts.carWidth/2 + wheel_width/2, ...
+    h_wheel_rr = patch('XData', translated_rr(:,1), 'YData', translated_rr(:,2), ...
                       'FaceColor', 'k', 'EdgeColor', 'k');
 
     % Add direction indicator
     arrow_length = opts.carLength * 0.6;
-    h_direction = quiver(0, 0, arrow_length, 0, 0, 'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
-
-    % Reference point (trajectory path)
-    h_path = plot(0, 0, 'b-', 'LineWidth', 2);
-    
-    % Initialize path history arrays
-    path_history_x = [];
-    path_history_y = [];
+    h_direction = quiver(x(1), y(1), arrow_length * cos(psi(1) + delta(1)),... 
+                         arrow_length * sin(psi(1) + delta(1)), 0, 'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
 
     % Set up axes properties
     axis equal;
-    grid on;
+    grid off;
     xlabel('X Position (m)', 'FontSize', 12);
     ylabel('Y Position (m)', 'FontSize', 12);
-    title('Car-Centric View', 'FontSize', 14);
-
-    visible_grid_size_with_margin = visible_grid_size * 0.6;
-    xlim([-visible_grid_size_with_margin/2, visible_grid_size_with_margin/2]);
-    ylim([-visible_grid_size_with_margin/2, visible_grid_size_with_margin/2]);
+    title('Top-Down Global View', 'FontSize', 14);
+    xlim([min_x, max_x]);
+    ylim([min_y, max_y]);
+    
+    % Add legend
+    legend([h_full_path, h_car], {'Trajectory', 'Vehicle'}, 'Location', 'northwest', 'FontSize', 10);
 
     %% Create progress bar, time display, and play/pause button
     % Slider for time control
@@ -421,20 +456,24 @@ try
         'x', x, ...
         'y', y, ...
         'h_current', h_current, ...
-        'visible_grid_size', visible_grid_size, ...
-        'grid_spacing', grid_spacing, ...
-        'h_grid', h_grid, ...
-        'h_grid_perp', h_grid_perp, ...
+        'h_car', h_car, ...
         'h_wheel_fl', h_wheel_fl, ...
         'h_wheel_fr', h_wheel_fr, ...
+        'h_wheel_rl', h_wheel_rl, ...
+        'h_wheel_rr', h_wheel_rr, ...
+        'h_direction', h_direction, ...
+        'car_outline', car_outline, ...
         'front_left_wheel', front_left_wheel, ...
         'front_right_wheel', front_right_wheel, ...
+        'rear_left_wheel', rear_left_wheel, ...
+        'rear_right_wheel', rear_right_wheel, ...
         'opts', opts, ...
         'wheel_width', wheel_width, ...
-        'h_direction', h_direction, ...
+        'front_overhang', front_overhang, ...
+        'rear_overhang', rear_overhang, ...
+        'wheel_length', wheel_length, ...
+        'wheelBase', opts.wheelBase, ...
         'arrow_length', arrow_length, ...
-        'h_path', h_path, ...
-        'visible_grid_size_with_margin', visible_grid_size_with_margin, ...
         'is_3d_brs', is_3d_brs, ...
         'time_display', time_display, ...
         'left_panel', left_panel ...
@@ -529,6 +568,21 @@ catch err
     end
 end
 
+end
+
+% Helper function to rotate points
+function rotated_points = rotatePoints(points, angle)
+    % Create rotation matrix
+    R = [cos(angle), -sin(angle); sin(angle), cos(angle)];
+    
+    % Rotate points
+    rotated_points = (R * points')';
+end
+
+% Helper function to translate points
+function translated_points = translatePoints(points, translation)
+    % Add translation vector to each point
+    translated_points = points + repmat(translation, size(points, 1), 1);
 end
 
 % Callback function for the slider - will have access to figure's UserData
@@ -643,86 +697,42 @@ function updateVisualization(idx, userData)
         end
     end
     
-    % Update top-down car-centric view
-    % 1. Update grid position to create illusion of car movement
-    [grid_x, grid_y] = meshgrid(-userData.visible_grid_size/2:userData.grid_spacing:userData.visible_grid_size/2, ...
-                              -userData.visible_grid_size/2:userData.grid_spacing:userData.visible_grid_size/2);
+    % Update car position and orientation in the global view
+    % 1. Update car body position
+    % Rotate and translate car outline
+    rotated_car = rotatePoints(userData.car_outline, current_psi);
+    translated_car = translatePoints(rotated_car, [current_x, current_y]);
+    set(userData.h_car, 'XData', translated_car(:,1), 'YData', translated_car(:,2));
     
-    % Translate grid points to car's frame
-    translated_x = grid_x - mod(current_x, userData.grid_spacing);
-    translated_y = grid_y - mod(current_y, userData.grid_spacing);
+    % 2. Update wheels positions and orientations
+    % First the rear wheels (only rotate with car body)
+    rotated_rl = rotatePoints(userData.rear_left_wheel, current_psi);
+    rotated_rr = rotatePoints(userData.rear_right_wheel, current_psi);
+    translated_rl = translatePoints(rotated_rl, [current_x, current_y]);
+    translated_rr = translatePoints(rotated_rr, [current_x, current_y]);
+    set(userData.h_wheel_rl, 'XData', translated_rl(:,1), 'YData', translated_rl(:,2));
+    set(userData.h_wheel_rr, 'XData', translated_rr(:,1), 'YData', translated_rr(:,2));
     
-    % Rotate grid points around origin by -current_psi
-    rotated_x = translated_x * cos(-current_psi) - translated_y * sin(-current_psi);
-    rotated_y = translated_x * sin(-current_psi) + translated_y * cos(-current_psi);
+    % Then the front wheels (rotate with car body + steering angle)
+    % First rotate front wheels around their centers by the steering angle
+    rotated_fl = rotatePoints(userData.front_left_wheel, current_delta);
+    rotated_fr = rotatePoints(userData.front_right_wheel, current_delta);
     
-    % Update grid points - convert to vectors for the plot function
-    set(userData.h_grid, 'XData', rotated_x(:), 'YData', rotated_y(:));
-    set(userData.h_grid_perp, 'XData', rotated_y(:), 'YData', rotated_x(:));
+    % Then rotate them with the car body
+    rotated_fl = rotatePoints(rotated_fl, current_psi);
+    rotated_fr = rotatePoints(rotated_fr, current_psi);
     
-    % 2. Update wheel orientations for steering
-    % Only rotate front wheels to match steering angle
-    % Get the original wheel shapes
-    fl_wheel_x = get(userData.h_wheel_fl, 'XData');
-    fl_wheel_y = get(userData.h_wheel_fl, 'YData');
-    fr_wheel_x = get(userData.h_wheel_fr, 'XData');
-    fr_wheel_y = get(userData.h_wheel_fr, 'YData');
+    % Finally translate to car position
+    translated_fl = translatePoints(rotated_fl, [current_x, current_y]);
+    translated_fr = translatePoints(rotated_fr, [current_x, current_y]);
     
-    % Calculate wheel center points
-    fl_center_x = mean(userData.front_left_wheel(:,1));
-    fl_center_y = mean(userData.front_left_wheel(:,2) + userData.opts.carWidth/2 - userData.wheel_width/2);
-    fr_center_x = mean(userData.front_right_wheel(:,1));
-    fr_center_y = mean(userData.front_right_wheel(:,2) - userData.opts.carWidth/2 + userData.wheel_width/2);
-    
-    % Rotate front wheels around their centers by the steering angle
-    fl_x_offset = fl_wheel_x - fl_center_x;
-    fl_y_offset = fl_wheel_y - fl_center_y;
-    fr_x_offset = fr_wheel_x - fr_center_x;
-    fr_y_offset = fr_wheel_y - fr_center_y;
-    
-    % Rotate offsets
-    fl_rotated_x = fl_x_offset * cos(current_delta) - fl_y_offset * sin(current_delta);
-    fl_rotated_y = fl_x_offset * sin(current_delta) + fl_y_offset * cos(current_delta);
-    fr_rotated_x = fr_x_offset * cos(current_delta) - fr_y_offset * sin(current_delta);
-    fr_rotated_y = fr_x_offset * sin(current_delta) + fr_y_offset * cos(current_delta);
-    
-    % Update wheel positions
-    set(userData.h_wheel_fl, 'XData', fl_center_x + fl_rotated_x, 'YData', fl_center_y + fl_rotated_y);
-    set(userData.h_wheel_fr, 'XData', fr_center_x + fr_rotated_x, 'YData', fr_center_y + fr_rotated_y);
+    set(userData.h_wheel_fl, 'XData', translated_fl(:,1), 'YData', translated_fl(:,2));
+    set(userData.h_wheel_fr, 'XData', translated_fr(:,1), 'YData', translated_fr(:,2));
     
     % 3. Update direction indicator
-    set(userData.h_direction, 'UData', userData.arrow_length * cos(current_delta), ...
-                     'VData', userData.arrow_length * sin(current_delta));
-    
-    % 4. Update path trace (in car's reference frame)
-    % Calculate the last 100 points of the path in car's reference frame
-    look_back = 100;
-    start_idx = max(1, idx - look_back);
-    
-    % Transform the world path to car's reference frame
-    rel_path_x = [];
-    rel_path_y = [];
-    for i = start_idx:idx
-        % Vector from current position to path point
-        dx = userData.x(i) - current_x;
-        dy = userData.y(i) - current_y;
-        
-        % Rotate to car's reference frame
-        rx = dx * cos(-current_psi) - dy * sin(-current_psi);
-        ry = dx * sin(-current_psi) + dy * cos(-current_psi);
-        
-        rel_path_x = [rel_path_x, rx];
-        rel_path_y = [rel_path_y, ry];
-    end
-    
-    % Update path
-    set(userData.h_path, 'XData', rel_path_x, 'YData', rel_path_y);
-    
-    % Ensure consistent axis limits
-    axes(userData.left_panel);
-    axis equal;
-    xlim([-userData.visible_grid_size_with_margin/2, userData.visible_grid_size_with_margin/2]);
-    ylim([-userData.visible_grid_size_with_margin/2, userData.visible_grid_size_with_margin/2]);
+    set(userData.h_direction, 'XData', current_x, 'YData', current_y, ...
+                    'UData', userData.arrow_length * cos(current_psi + current_delta), ...
+                    'VData', userData.arrow_length * sin(current_psi + current_delta));
     
     % Update display
     drawnow;
