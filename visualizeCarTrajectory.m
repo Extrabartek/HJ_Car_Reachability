@@ -31,9 +31,6 @@ function visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, varargin
 %                 'isoValue'     - Value for isosurface (default: 0)
 %                 'brsOpacity'   - Opacity for BRS isosurface (default: 0.3)
 %                 'targetOpacity'- Opacity for target isosurface (default: 0.5)
-%
-% Example:
-%   visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, 30, 'saveVideo', true);
 
 %% Parse inputs
 p = inputParser;
@@ -136,13 +133,25 @@ try
             g.xs{1}(:,1,1) * 180/pi,...  % gamma (yaw rate)
             g.xs{3}(1,1,:) * 180/pi); % delta (steering angle)
         
-        % Create BRS isosurface
-        h_brs = patch(isosurface(beta_grid, gamma_grid, delta_grid, data_brs, opts.isoValue));
-        set(h_brs, 'FaceColor', 'red', 'EdgeColor', 'none', 'FaceAlpha', opts.brsOpacity);
+        % Create BRS isosurface - first check if it will be empty
+        [brs_faces, brs_verts] = isosurface(beta_grid, gamma_grid, delta_grid, data_brs, opts.isoValue);
+        if ~isempty(brs_faces)
+            h_brs = patch('Faces', brs_faces, 'Vertices', brs_verts, ...
+                         'FaceColor', 'red', 'EdgeColor', 'none', 'FaceAlpha', opts.brsOpacity);
+        else
+            h_brs = [];
+            warning('BRS isosurface is empty. Will not display BRS boundary.');
+        end
         
-        % Create target set isosurface
-        h_target = patch(isosurface(beta_grid, gamma_grid, delta_grid, data0, opts.isoValue));
-        set(h_target, 'FaceColor', 'green', 'EdgeColor', 'none', 'FaceAlpha', opts.targetOpacity);
+        % Create target set isosurface - first check if it will be empty
+        [target_faces, target_verts] = isosurface(beta_grid, gamma_grid, delta_grid, data0, opts.isoValue);
+        if ~isempty(target_faces)
+            h_target = patch('Faces', target_faces, 'Vertices', target_verts, ...
+                           'FaceColor', 'green', 'EdgeColor', 'none', 'FaceAlpha', opts.targetOpacity);
+        else
+            h_target = [];
+            warning('Target isosurface is empty. Will not display target set.');
+        end
         
         % Plot the 3D trajectory
         h_traj = plot3(traj(2,:) * 180/pi, traj(1,:) * 180/pi, traj(3,:) * 180/pi, ...
@@ -170,10 +179,45 @@ try
         material dull;
         view([-30, 30]);
         
-        % Add legend
-        legend([h_brs, h_target, h_traj, h_start, h_end, h_current], ...
-               'BRS Boundary', 'Target Set', 'Trajectory', 'Start', 'End', 'Current Position', ...
-               'Location', 'northeastoutside', 'FontSize', 10);
+        % Add legend with valid handles only
+        % First collect valid handles and their labels
+        legend_handles = [];
+        legend_labels = {};
+        
+        if ~isempty(h_brs) && ishandle(h_brs) && isvalid(h_brs)
+            legend_handles = [legend_handles, h_brs];
+            legend_labels{end+1} = 'BRS Boundary';
+        end
+        
+        if ~isempty(h_target) && ishandle(h_target) && isvalid(h_target)
+            legend_handles = [legend_handles, h_target];
+            legend_labels{end+1} = 'Target Set';
+        end
+        
+        if ~isempty(h_traj) && ishandle(h_traj)
+            legend_handles = [legend_handles, h_traj];
+            legend_labels{end+1} = 'Trajectory';
+        end
+        
+        if ~isempty(h_start) && ishandle(h_start)
+            legend_handles = [legend_handles, h_start];
+            legend_labels{end+1} = 'Start';
+        end
+        
+        if ~isempty(h_end) && ishandle(h_end)
+            legend_handles = [legend_handles, h_end];
+            legend_labels{end+1} = 'End';
+        end
+        
+        if ~isempty(h_current) && ishandle(h_current)
+            legend_handles = [legend_handles, h_current];
+            legend_labels{end+1} = 'Current Position';
+        end
+        
+        % Create legend only if we have valid handles
+        if ~isempty(legend_handles)
+            legend(legend_handles, legend_labels, 'Location', 'northeast', 'FontSize', 10);
+        end
         
         % Enable rotation and set axis bounds
         axis tight;
@@ -182,11 +226,11 @@ try
     else
         % Fallback to 2D visualization if BRS is only 2D
         % Plot BRS boundary
-        [~, h_brs] = contour(g.xs{2}, g.xs{1}, data_brs, [0 0], 'r-', 'LineWidth', 2);
+        [C_brs, h_brs] = contour(g.xs{2}, g.xs{1}, data_brs, [0 0], 'r-', 'LineWidth', 2);
         hold on;
 
         % Plot target set
-        [~, h_target] = contour(g.xs{2}, g.xs{1}, data0, [0 0], 'g-', 'LineWidth', 2);
+        [C_target, h_target] = contour(g.xs{2}, g.xs{1}, data0, [0 0], 'g-', 'LineWidth', 2);
 
         % Plot full trajectory
         h_traj = plot(traj(2,:) * 180/pi, traj(1,:) * 180/pi, 'b-', 'LineWidth', 1.5);
@@ -198,14 +242,50 @@ try
         % Current position marker (will be updated during animation)
         h_current = plot(traj(2,1) * 180/pi, traj(1,1) * 180/pi, 'ro', 'MarkerSize', 12, 'LineWidth', 2);
 
-        % Add labels and legend
+        % Add labels and legend with valid handles only
         grid on;
         xlabel('Sideslip Angle \beta (deg)', 'FontSize', 12);
         ylabel('Yaw Rate \gamma (deg/s)', 'FontSize', 12);
         title('State Space View (2D Projection)', 'FontSize', 14);
-        legend([h_brs, h_target, h_traj, h_start, h_end, h_current], ...
-               'BRS Boundary', 'Target Set', 'Trajectory', 'Start', 'End', 'Current Position', ...
-               'Location', 'best', 'FontSize', 10);
+        
+        % Collect valid handles and their labels
+        legend_handles = [];
+        legend_labels = {};
+        
+        if ~isempty(h_brs) && ishandle(h_brs)
+            legend_handles = [legend_handles, h_brs];
+            legend_labels{end+1} = 'BRS Boundary';
+        end
+        
+        if ~isempty(h_target) && ishandle(h_target)
+            legend_handles = [legend_handles, h_target];
+            legend_labels{end+1} = 'Target Set';
+        end
+        
+        if ~isempty(h_traj) && ishandle(h_traj)
+            legend_handles = [legend_handles, h_traj];
+            legend_labels{end+1} = 'Trajectory';
+        end
+        
+        if ~isempty(h_start) && ishandle(h_start)
+            legend_handles = [legend_handles, h_start];
+            legend_labels{end+1} = 'Start';
+        end
+        
+        if ~isempty(h_end) && ishandle(h_end)
+            legend_handles = [legend_handles, h_end];
+            legend_labels{end+1} = 'End';
+        end
+        
+        if ~isempty(h_current) && ishandle(h_current)
+            legend_handles = [legend_handles, h_current];
+            legend_labels{end+1} = 'Current Position';
+        end
+        
+        % Create legend only if we have valid handles
+        if ~isempty(legend_handles)
+            legend(legend_handles, legend_labels, 'Location', 'best', 'FontSize', 10);
+        end
 
         % Set reasonable axis limits
         axis tight;
@@ -361,13 +441,17 @@ try
         % Update state-space view
         if is_3d_brs
             % Update 3D state-space marker
-            set(h_current, 'XData', current_beta * 180/pi, ...
-                         'YData', current_gamma * 180/pi, ...
-                         'ZData', current_delta * 180/pi);
+            if ishandle(h_current)
+                set(h_current, 'XData', current_beta * 180/pi, ...
+                             'YData', current_gamma * 180/pi, ...
+                             'ZData', current_delta * 180/pi);
+            end
         else
             % Update 2D state-space marker
-            set(h_current, 'XData', current_beta * 180/pi, ...
-                         'YData', current_gamma * 180/pi);
+            if ishandle(h_current)
+                set(h_current, 'XData', current_beta * 180/pi, ...
+                             'YData', current_gamma * 180/pi);
+            end
         end
         
         % Update top-down car-centric view
