@@ -28,7 +28,9 @@ function visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, varargin
 %                 'carWidth'     - Car width in meters (default: 2.0)
 %                 'wheelBase'    - Distance between axles (default: 2.7)
 %                 'gridSize'     - Size of the grid in the car view (default: 20)
-%                 'deltaSlice'   - Steering angle slice for BRS (default: middle slice)
+%                 'isoValue'     - Value for isosurface (default: 0)
+%                 'brsOpacity'   - Opacity for BRS isosurface (default: 0.3)
+%                 'targetOpacity'- Opacity for target isosurface (default: 0.5)
 %
 % Example:
 %   visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, 30, 'saveVideo', true);
@@ -53,14 +55,17 @@ p.addParameter('carLength', 4.5, @isnumeric);
 p.addParameter('carWidth', 2.0, @isnumeric);
 p.addParameter('wheelBase', 2.7, @isnumeric);
 p.addParameter('gridSize', 20, @isnumeric);
-p.addParameter('deltaSlice', [], @(x) isempty(x) || isnumeric(x));
+p.addParameter('isoValue', 0, @isnumeric);
+p.addParameter('brsOpacity', 0.3, @(x) isnumeric(x) && x >= 0 && x <= 1);
+p.addParameter('targetOpacity', 0.5, @(x) isnumeric(x) && x >= 0 && x <= 1);
 
 p.parse(traj, traj_tau, g, data_brs, data0, vx, varargin{:});
 opts = p.Results;
 
-% Determine delta slice if not specified
-if isempty(opts.deltaSlice) && ndims(data_brs) > 2
-    opts.deltaSlice = ceil(size(data_brs, 3)/2);
+% Check if we have a 3D BRS (needed for 3D visualization)
+is_3d_brs = ndims(data_brs) == 3;
+if ~is_3d_brs
+    warning('BRS data is not 3D. The right panel will show a 2D view instead of 3D.');
 end
 
 %% Setup video recording if needed
@@ -123,58 +128,92 @@ try
     %% Setup 3D state-space view (right panel)
     axes(right_panel);
 
-    % Extract a 2D slice of BRS at the specified steering angle if 3D
-    if ndims(data_brs) == 3
-        brs_2d_slice = squeeze(data_brs(:,:,opts.deltaSlice));
-        target_2d_slice = squeeze(data0(:,:,opts.deltaSlice));
-        delta_values = linspace(g.min(3), g.max(3), size(data_brs, 3));
-        delta_value = delta_values(opts.deltaSlice);
+    if is_3d_brs
+        % Create 3D visualization with isosurfaces
+        % Create grid matrices for isosurfaces - explicitly convert to degrees for visualization
+        [beta_grid, gamma_grid, delta_grid] = meshgrid(...
+            g.xs{2}(1,:,1) * 180/pi,...  % beta (sideslip angle)
+            g.xs{1}(:,1,1) * 180/pi,...  % gamma (yaw rate)
+            g.xs{3}(1,1,:) * 180/pi); % delta (steering angle)
+        
+        % Create BRS isosurface
+        h_brs = patch(isosurface(beta_grid, gamma_grid, delta_grid, data_brs, opts.isoValue));
+        set(h_brs, 'FaceColor', 'red', 'EdgeColor', 'none', 'FaceAlpha', opts.brsOpacity);
+        
+        % Create target set isosurface
+        h_target = patch(isosurface(beta_grid, gamma_grid, delta_grid, data0, opts.isoValue));
+        set(h_target, 'FaceColor', 'green', 'EdgeColor', 'none', 'FaceAlpha', opts.targetOpacity);
+        
+        % Plot the 3D trajectory
+        h_traj = plot3(traj(2,:) * 180/pi, traj(1,:) * 180/pi, traj(3,:) * 180/pi, ...
+            'b-', 'LineWidth', 2);
+        
+        % Mark start and end points
+        h_start = plot3(traj(2,1) * 180/pi, traj(1,1) * 180/pi, traj(3,1) * 180/pi, ...
+            'bo', 'MarkerSize', 10, 'MarkerFaceColor', 'b');
+        h_end = plot3(traj(2,end) * 180/pi, traj(1,end) * 180/pi, traj(3,end) * 180/pi, ...
+            'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
+        
+        % Current position marker (will be updated during animation)
+        h_current = plot3(traj(2,1) * 180/pi, traj(1,1) * 180/pi, traj(3,1) * 180/pi, ...
+            'ro', 'MarkerSize', 12, 'LineWidth', 2);
+        
+        % Add labels and enhance 3D visualization
+        xlabel('Sideslip Angle \beta (deg)', 'FontSize', 12);
+        ylabel('Yaw Rate \gamma (deg/s)', 'FontSize', 12);
+        zlabel('Steering Angle \delta (deg)', 'FontSize', 12);
+        title('3D State Space View', 'FontSize', 14);
+        
+        % Set up lighting and view angle for better 3D visualization
+        lighting gouraud;
+        camlight('headlight');
+        material dull;
+        view([-30, 30]);
+        
+        % Add legend
+        legend([h_brs, h_target, h_traj, h_start, h_end, h_current], ...
+               'BRS Boundary', 'Target Set', 'Trajectory', 'Start', 'End', 'Current Position', ...
+               'Location', 'northeastoutside', 'FontSize', 10);
+        
+        % Enable rotation and set axis bounds
+        axis tight;
+        grid on;
+        box on;
     else
-        brs_2d_slice = data_brs;
-        target_2d_slice = data0;
-        delta_value = 0;
+        % Fallback to 2D visualization if BRS is only 2D
+        % Plot BRS boundary
+        [~, h_brs] = contour(g.xs{2}, g.xs{1}, data_brs, [0 0], 'r-', 'LineWidth', 2);
+        hold on;
+
+        % Plot target set
+        [~, h_target] = contour(g.xs{2}, g.xs{1}, data0, [0 0], 'g-', 'LineWidth', 2);
+
+        % Plot full trajectory
+        h_traj = plot(traj(2,:) * 180/pi, traj(1,:) * 180/pi, 'b-', 'LineWidth', 1.5);
+
+        % Mark start and end points
+        h_start = plot(traj(2,1) * 180/pi, traj(1,1) * 180/pi, 'bo', 'MarkerSize', 10, 'MarkerFaceColor', 'b');
+        h_end = plot(traj(2,end) * 180/pi, traj(1,end) * 180/pi, 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
+
+        % Current position marker (will be updated during animation)
+        h_current = plot(traj(2,1) * 180/pi, traj(1,1) * 180/pi, 'ro', 'MarkerSize', 12, 'LineWidth', 2);
+
+        % Add labels and legend
+        grid on;
+        xlabel('Sideslip Angle \beta (deg)', 'FontSize', 12);
+        ylabel('Yaw Rate \gamma (deg/s)', 'FontSize', 12);
+        title('State Space View (2D Projection)', 'FontSize', 14);
+        legend([h_brs, h_target, h_traj, h_start, h_end, h_current], ...
+               'BRS Boundary', 'Target Set', 'Trajectory', 'Start', 'End', 'Current Position', ...
+               'Location', 'best', 'FontSize', 10);
+
+        % Set reasonable axis limits
+        axis tight;
+        ax_limits = axis();
+        axis_margin = 0.1 * max(ax_limits(2)-ax_limits(1), ax_limits(4)-ax_limits(3));
+        axis([ax_limits(1)-axis_margin, ax_limits(2)+axis_margin, ...
+              ax_limits(3)-axis_margin, ax_limits(4)+axis_margin]);
     end
-
-    % Convert grid values from radians to degrees for plotting
-    xs1_deg = g.xs{1}(:,:,1) * 180/pi;  % Yaw rate (gamma) in degrees
-    xs2_deg = g.xs{2}(:,:,1) * 180/pi;  % Sideslip angle (beta) in degrees
-
-    % Plot BRS boundary
-    [~, h_brs] = contour(xs2_deg, xs1_deg, brs_2d_slice, [0 0], 'r-', 'LineWidth', 2);
-    hold on;
-
-    % Plot target set
-    [~, h_target] = contour(xs2_deg, xs1_deg, target_2d_slice, [0 0], 'g-', 'LineWidth', 2);
-
-    % Plot full trajectory
-    h_traj = plot(traj(2,:) * 180/pi, traj(1,:) * 180/pi, 'b-', 'LineWidth', 1.5);
-
-    % Mark start and end points
-    h_start = plot(traj(2,1) * 180/pi, traj(1,1) * 180/pi, 'bo', 'MarkerSize', 10, 'MarkerFaceColor', 'b');
-    h_end = plot(traj(2,end) * 180/pi, traj(1,end) * 180/pi, 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
-
-    % Current position marker (will be updated during animation)
-    h_current = plot(traj(2,1) * 180/pi, traj(1,1) * 180/pi, 'ro', 'MarkerSize', 12, 'LineWidth', 2);
-
-    % Add labels and legend
-    grid on;
-    xlabel('Sideslip Angle \beta (deg)', 'FontSize', 12);
-    ylabel('Yaw Rate \gamma (deg/s)', 'FontSize', 12);
-    if ndims(data_brs) == 3
-        title(sprintf('State Space View (δ = %.1f°)', delta_value * 180/pi), 'FontSize', 14);
-    else
-        title('State Space View', 'FontSize', 14);
-    end
-    legend([h_brs, h_target, h_traj, h_start, h_end, h_current], ...
-           'BRS Boundary', 'Target Set', 'Trajectory', 'Start', 'End', 'Current Position', ...
-           'Location', 'best', 'FontSize', 10);
-
-    % Set reasonable axis limits
-    axis tight;
-    ax_limits = axis();
-    axis_margin = 0.1 * max(ax_limits(2)-ax_limits(1), ax_limits(4)-ax_limits(3));
-    axis([ax_limits(1)-axis_margin, ax_limits(2)+axis_margin, ...
-          ax_limits(3)-axis_margin, ax_limits(4)+axis_margin]);
 
     %% Setup top-down car-centric view (left panel)
     axes(left_panel);
@@ -319,8 +358,17 @@ try
         current_x = x(idx);
         current_y = y(idx);
         
-        % Update 3D state-space view
-        set(h_current, 'XData', current_beta * 180/pi, 'YData', current_gamma * 180/pi);
+        % Update state-space view
+        if is_3d_brs
+            % Update 3D state-space marker
+            set(h_current, 'XData', current_beta * 180/pi, ...
+                         'YData', current_gamma * 180/pi, ...
+                         'ZData', current_delta * 180/pi);
+        else
+            % Update 2D state-space marker
+            set(h_current, 'XData', current_beta * 180/pi, ...
+                         'YData', current_gamma * 180/pi);
+        end
         
         % Update top-down car-centric view
         % 1. Update grid position to create illusion of car movement
@@ -445,8 +493,7 @@ catch err
             'carLength', opts.carLength, ...
             'carWidth', opts.carWidth, ...
             'wheelBase', opts.wheelBase, ...
-            'gridSize', opts.gridSize, ...
-            'deltaSlice', opts.deltaSlice);
+            'gridSize', opts.gridSize);
     end
 end
 
