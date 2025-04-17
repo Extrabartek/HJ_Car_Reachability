@@ -452,16 +452,16 @@ try
     h_wheel_rl = patch('XData', rear_left_wheel(:,1), 'YData', rear_left_wheel(:,2), ...
                       'FaceColor', 'k', 'EdgeColor', 'k');
     h_wheel_rr = patch('XData', rear_right_wheel(:,1), 'YData', rear_right_wheel(:,2), ...
-                      'FaceColor', 'k', 'EdgeColor', 'k');
+                          'FaceColor', 'k', 'EdgeColor', 'k');
 
+    % Create velocity vector arrow (initially at origin)
+    h_velocity_vector = quiver(0, 0, 0, 0, 0, 'g', 'LineWidth', 2, 'MaxHeadSize', 0.5);
+    
     % Add direction indicator - now aligned with car's frame but considering initial rotation
     arrow_length = opts.carLength * 0.6;
     initial_arrow_angle = car_rotation + delta(1); % Initial steering angle plus car rotation
     h_direction = quiver(0, 0, arrow_length * cos(initial_arrow_angle), arrow_length * sin(initial_arrow_angle), 0, 'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
 
-
-    % Create velocity vector arrow (initially at origin)
-    h_velocity_vector = quiver(0, 0, 0, 0, 0, 'g', 'LineWidth', 2, 'MaxHeadSize', 0.5);
 
     % Set up axes properties
     axis equal;
@@ -470,9 +470,11 @@ try
     ylabel('Y Position (m)', 'FontSize', 12);
     title('Car-Centric View', 'FontSize', 14);
 
+    min_margin = 5;
+
     visible_grid_size_with_margin = visible_grid_size * 0.6;
-    xlim([min(x)*1.1, max(x)*1.1]);
-    ylim([min(y)*1.1, max(y)*1.1]);
+    xlim([min(x)*1.1 - min_margin, max(x)*1.1 + min_margin]);
+    ylim([min(y)*1.1 - min_margin, max(y)*1.1 + min_margin]);
 
     %% Create progress bar, time display, and play/pause button
     % Slider for time control
@@ -956,7 +958,7 @@ function updateVisualization(idx, userData)
     vy_global = vx_body * sin(current_psi) + vy_body * cos(current_psi);
     
     % Scale for visualization (adjust scale_factor as needed for good visibility)
-    scale_factor = 0.2;
+    scale_factor = 0.1;
     vx_scaled = vx_global * scale_factor;
     vy_scaled = vy_global * scale_factor;
     
