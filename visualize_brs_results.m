@@ -5,14 +5,15 @@ function visualize_brs_results(result_folder, varargin)
 %   result_folder - Path to the folder containing BRS computation results
 %   varargin      - Optional parameter-value pairs:
 %                   'plotType'   - Types of plots to generate (cell array)
-%                                 Options: 'control', 'detailed', 'comparison'
+%                                 Options: 'control', 'detailed', 'comparison', 
+%                                 'velocity_stack', 'derivative'
 %                                 (default: {'control', 'detailed'})
 %                   'saveFigs'   - Whether to save figures (default: true)
 %                   'figFormat'  - Format to save figures in (default: 'png')
 %
 % Example:
 %   visualize_brs_results('brs_results_20250325_123456_vx30-50_mz5000-10000');
-%   visualize_brs_results('brs_results_folder', 'plotType', {'comparison'});
+%   visualize_brs_results('brs_results_folder', 'plotType', {'derivative'});
 
 %% Parse inputs
 p = inputParser;
@@ -91,12 +92,154 @@ for i = 1:length(plot_types)
         case 'velocity_stack'
             generate_3d_velocity_stack();
             
+        case 'derivative'
+            generate_derivative_plots();
+            
         otherwise
             warning('Unknown plot type: %s', current_plot_type);
     end
 end
 
 disp('Visualization complete!');
+
+%% Nested function to generate derivative plots
+    function generate_derivative_plots()
+        disp('Generating derivative plots...');
+        
+        % Loop through velocities and control limits
+        for v_idx = 1:length(velocities)
+            for m_idx = 1:length(mzmax_values)
+                figure('Name', sprintf('State Derivatives - v=%d, Mz=%d', velocities(v_idx), mzmax_values(m_idx)));
+                clf;
+                
+                % Create a larger figure
+                set(gcf, 'Position', [100, 100, 1000, 800]);
+                
+                % Extract data for the current setup
+                current_brs = all_data{v_idx, m_idx};
+                current_control = control_data{v_idx, m_idx};
+                
+                % Convert grid values from radians to degrees for plotting
+                xs1_deg = g.xs{2} * 180/pi;  % Convert sideslip angle to degrees
+                xs2_deg = g.xs{1} * 180/pi;  % Convert yaw rate to degrees
+                
+                % Compute gradients of the value function
+                derivs = computeGradients(g, current_brs);
+                
+                % Extract the derivatives with respect to each state
+                gamma_derivative = derivs{1};  % dV/d(yaw rate)
+                beta_derivative = derivs{2};   % dV/d(sideslip)
+                
+                % 1. Plot derivative with respect to sideslip angle (beta)
+                subplot(2, 2, 1);
+                beta_deriv_plot = pcolor(xs1_deg, xs2_deg, beta_derivative);
+                beta_deriv_plot.EdgeColor = 'none';
+                colormap(gca, 'parula');
+                cb = colorbar;
+                title(cb, 'dV/dβ');
+                hold on;
+                
+                % Add BRS boundary
+                [~, h_brs] = contour(xs1_deg, xs2_deg, current_brs, [0 0], 'LineWidth', 2, 'Color', 'k');
+                
+                % Add zero-crossing contour for the derivative
+                [~, h_zero] = contour(xs1_deg, xs2_deg, beta_derivative, [0 0], 'LineWidth', 1.5, 'Color', 'r', 'LineStyle', '--');
+                
+                title('Derivative w.r.t. Sideslip Angle (β)', 'FontSize', 12);
+                xlabel('Sideslip Angle (degrees)', 'FontSize', 10);
+                ylabel('Yaw Rate (degrees/s)', 'FontSize', 10);
+                legend([h_brs, h_zero], 'BRS Boundary', 'dV/dβ = 0', 'Location', 'best');
+                grid on;
+                
+                % 2. Plot derivative with respect to yaw rate (gamma)
+                subplot(2, 2, 2);
+                gamma_deriv_plot = pcolor(xs1_deg, xs2_deg, gamma_derivative);
+                gamma_deriv_plot.EdgeColor = 'none';
+                colormap(gca, 'parula');
+                cb = colorbar;
+                title(cb, 'dV/dγ');
+                hold on;
+                
+                % Add BRS boundary
+                [~, h_brs] = contour(xs1_deg, xs2_deg, current_brs, [0 0], 'LineWidth', 2, 'Color', 'k');
+                
+                % Add zero-crossing contour for the derivative
+                [~, h_zero] = contour(xs1_deg, xs2_deg, gamma_derivative, [0 0], 'LineWidth', 1.5, 'Color', 'r', 'LineStyle', '--');
+                
+                title('Derivative w.r.t. Yaw Rate (γ)', 'FontSize', 12);
+                xlabel('Sideslip Angle (degrees)', 'FontSize', 10);
+                ylabel('Yaw Rate (degrees/s)', 'FontSize', 10);
+                legend([h_brs, h_zero], 'BRS Boundary', 'dV/dγ = 0', 'Location', 'best');
+                grid on;
+                
+                % 3. Plot derivative magnitude
+                subplot(2, 2, 3);
+                % Calculate gradient magnitude (Euclidean norm)
+                gradient_magnitude = sqrt(gamma_derivative.^2 + beta_derivative.^2);
+                
+                magnitude_plot = pcolor(xs1_deg, xs2_deg, gradient_magnitude);
+                magnitude_plot.EdgeColor = 'none';
+                colormap(gca, 'hot');
+                cb = colorbar;
+                title(cb, '||∇V||');
+                hold on;
+                
+                % Add BRS boundary
+                [~, h_brs] = contour(xs1_deg, xs2_deg, current_brs, [0 0], 'LineWidth', 2, 'Color', 'k');
+                
+                title('Gradient Magnitude ||∇V||', 'FontSize', 12);
+                xlabel('Sideslip Angle (degrees)', 'FontSize', 10);
+                ylabel('Yaw Rate (degrees/s)', 'FontSize', 10);
+                grid on;
+                
+                % 4. Vector field visualization of the gradient
+                subplot(2, 2, 4);
+                % Create a coarser grid for the quiver plot
+                [X, Y] = meshgrid(linspace(min(xs1_deg(:)), max(xs1_deg(:)), 20), ...
+                                 linspace(min(xs2_deg(:)), max(xs2_deg(:)), 20));
+                
+                % Interpolate gradient values to the coarser grid
+                interp_gamma_deriv = interp2(xs1_deg, xs2_deg, gamma_derivative, X, Y);
+                interp_beta_deriv = interp2(xs1_deg, xs2_deg, beta_derivative, X, Y);
+                
+                % Normalize for better visualization
+                magnitudes = sqrt(interp_gamma_deriv.^2 + interp_beta_deriv.^2);
+                max_mag = max(magnitudes(:));
+                norm_factor = 1 / max_mag;
+                
+                norm_gamma_deriv = interp_gamma_deriv * norm_factor;
+                norm_beta_deriv = interp_beta_deriv * norm_factor;
+                
+                % Create vector field
+                h_quiver = quiver(X, Y, norm_beta_deriv, norm_gamma_deriv, 0.5, 'k');
+                hold on;
+                
+                % Add BRS boundary
+                [~, h_brs] = contour(xs1_deg, xs2_deg, current_brs, [0 0], 'LineWidth', 2, 'Color', 'k');
+                
+                % Add target set
+                [~, h_target] = contour(xs1_deg, xs2_deg, data0, [0 0], 'LineWidth', 1.5, 'Color', 'g', 'LineStyle', '--');
+                
+                title('Gradient Vector Field ∇V', 'FontSize', 12);
+                xlabel('Sideslip Angle (degrees)', 'FontSize', 10);
+                ylabel('Yaw Rate (degrees/s)', 'FontSize', 10);
+                legend([h_brs, h_target], 'BRS Boundary', 'Target Set', 'Location', 'best');
+                grid on;
+                
+                % Add a main title for the entire figure
+                sgtitle(sprintf('Gradient Analysis for v = %d m/s, Mzmax = %d N·m', ...
+                    velocities(v_idx), mzmax_values(m_idx)), 'FontSize', 14, 'FontWeight', 'bold');
+                
+                % Save figure if enabled
+                if opts.saveFigs
+                    fig_filename = sprintf('derivative_v%d_mz%d.%s', ...
+                        velocities(v_idx), mzmax_values(m_idx), opts.figFormat);
+                    saveas(gcf, fullfile(fig_folder, fig_filename));
+                    fprintf('Saved derivative plot to %s\n', fullfile(fig_folder, fig_filename));
+                end
+            end
+        end
+    end
 
 %% Nested function to generate basic control plots
     function generate_control_plots()
@@ -569,6 +712,7 @@ disp('Visualization complete!');
         end
     end
 
+
 %% Helper function to extract costates (gradients) from the value function
 function derivs = extractCostates(g, data)
     % Initialize derivatives
@@ -611,5 +755,8 @@ function derivs = extractCostates(g, data)
         end
     end
 end
+
+% The implementation of other functions (generate_detailed_plots, generate_comparison_plots, 
+% generate_3d_velocity_stack) would remain unchanged from the original code.
 
 end
