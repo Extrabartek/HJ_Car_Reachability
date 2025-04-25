@@ -294,7 +294,8 @@ end
 extra_args.arrival_time = arrival_time;
 
 % Extract xinit and params from dCar
-[traj, traj_tau, traj_u, traj_metrics] = compute_optimal_trajectory_steered(g, data_brs, tau_brs, xinit, params, extra_args);
+% [traj, traj_tau, traj_u, traj_metrics] = compute_optimal_trajectory_steered(g, data_brs, tau_brs, xinit, params, extra_args);
+[traj, traj_tau, traj_u, traj_metrics] = computeOptimalTrajectoryWithCorrectGradients(g, data_brs_full, tau_brs, xinit, params, extra_args);
 
 %% Save results if requested
 if opts.savePlots

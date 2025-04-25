@@ -43,8 +43,8 @@ max_time = 2.5;           % Maximum trajectory time (seconds)
 delta_slice = [];         % Which delta slice to visualize (default: middle slice)
 
 %% Save options
-save_results = true;                  % Whether to save trajectory data
-save_plots = true;                    % Whether to save visualization plots
+save_results = false;                  % Whether to save trajectory data
+save_plots = false;                    % Whether to save visualization plots
 output_folder = brs_folder;           % Save results to the same folder as BRS data
 
 %% Compute the optimal trajectory

@@ -94,6 +94,9 @@ for i = 1:length(plot_types)
             
         case 'derivative'
             generate_derivative_plots();
+         
+        case 'tire'
+            generate_tire_curves();
             
         otherwise
             warning('Unknown plot type: %s', current_plot_type);
@@ -102,7 +105,178 @@ end
 
 disp('Visualization complete!');
 
-%% Nested function to generate derivative plots
+%% Nested function to generate interactive tire force curve visualization
+function generate_tire_curves()
+    disp('Generating interactive tire force curve visualization...');
+    
+    % Loop through velocities and control limits
+    for v_idx = 1:length(velocities)
+        for m_idx = 1:length(mzmax_values)
+            % Create a figure with specified layout
+            fig = figure('Name', sprintf('Tire Force Analysis - v=%d, Mz=%d', velocities(v_idx), mzmax_values(m_idx)), ...
+                         'Position', [100, 100, 1200, 700]);
+            
+            % Create a layout with left panel and right panel split vertically
+            left_panel = subplot(1, 2, 1);
+            
+            % Create right panel and get its position
+            right_panel = subplot(1, 2, 2); 
+            p = get(right_panel, 'Position');
+            delete(right_panel); % Delete it so we can create two stacked panels
+            
+            % Create two stacked panels on the right
+            right_top = axes('Position', [p(1) p(2)+p(4)/2 p(3) p(4)/2-0.02]);
+            right_bottom = axes('Position', [p(1) p(2) p(3) p(4)/2-0.02]);
+            
+            % Define slip angle range for tire curves
+            alpha_range = linspace(-0.5, 0.5, 500); % ±30 degrees in radians
+            alpha_deg = alpha_range * 180/pi;
+            
+            %% Setup vehicle parameters from BRS data
+            % Get vehicle parameters from base_params
+            m = base_params(1);      % Vehicle mass
+            vx = velocities(v_idx);  % Current longitudinal velocity
+            Lf = base_params(3);     % Distance from CG to front axle
+            Lr = base_params(4);     % Distance from CG to rear axle
+            Iz = base_params(5);     % Yaw moment of inertia
+            mu = base_params(6);     % Friction coefficient
+            Cf = base_params(9);     % Front tire cornering stiffness
+            Cr = base_params(10);    % Rear tire cornering stiffness
+            
+            % Create a NonlinearBicycle model to use its tire force calculation
+            temp_params = base_params;
+            temp_params(2) = vx; % Set the velocity parameter
+            temp_model = NonlinearBicycle([0; 0], temp_params);
+            
+            %% Calculate tire forces for the slip angle range
+            front_forces = zeros(size(alpha_range));
+            rear_forces = zeros(size(alpha_range));
+            
+            for i = 1:length(alpha_range)
+                % Calculate tire forces using a helper function
+                front_forces(i) = calculateTireForce(alpha_range(i), temp_model.Cf, temp_model.Fzf, mu);
+                rear_forces(i) = calculateTireForce(alpha_range(i), temp_model.Cr, temp_model.Fzr, mu);
+            end
+            
+            %% Plot the BRS with current slice
+            axes(left_panel);
+            
+            % Convert grid values from radians to degrees for plotting
+            xs1_deg = g.xs{2} * 180/pi;  % Convert sideslip angle to degrees
+            xs2_deg = g.xs{1} * 180/pi;  % Convert yaw rate to degrees
+            
+            % Plot the BRS boundary
+            current_brs = all_data{v_idx, m_idx};
+            [~, h_brs] = contour(xs1_deg, xs2_deg, current_brs, [0 0], 'LineWidth', 2, 'Color', 'k');
+            hold on;
+            
+            % Plot the target set
+            [~, h_target] = contour(xs1_deg, xs2_deg, data0, [0 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+            
+            % Create a marker for the selected point (initially hidden)
+            h_point = plot(0, 0, 'ro', 'MarkerSize', 10, 'LineWidth', 2, 'Visible', 'off');
+            
+            % Add grid, labels, and legend
+            grid on;
+            xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
+            ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
+            title('BRS Boundary - Click to Analyze', 'FontSize', 14);
+            legend([h_brs, h_target], 'BRS Boundary', 'Target Set', 'Location', 'best');
+            
+            % Set axis limits
+            x_limits = [g.min(2) * 180/pi, g.max(2) * 180/pi];
+            y_limits = [g.min(1) * 180/pi, g.max(1) * 180/pi];
+            xlim(x_limits);
+            ylim(y_limits);
+            
+            %% Plot the front tire force curve
+            axes(right_top);
+            h_front_curve = plot(alpha_deg, front_forces / 1000, 'b-', 'LineWidth', 2);
+            hold on;
+            h_front_point = plot(0, 0, 'ro', 'MarkerSize', 8, 'LineWidth', 2, 'Visible', 'off');
+            grid on;
+            
+            % Calculate front tire saturation point
+            front_sat_angle = atan(3*mu*temp_model.Fzf/Cf) * 180/pi;
+            
+            % Draw vertical lines at saturation angles
+            front_sat_y_limits = get(gca, 'YLim');
+            plot([-front_sat_angle, -front_sat_angle], front_sat_y_limits, 'k--', 'LineWidth', 1);
+            plot([front_sat_angle, front_sat_angle], front_sat_y_limits, 'k--', 'LineWidth', 1);
+            
+            xlabel('Slip Angle (degrees)', 'FontSize', 10);
+            ylabel('Lateral Force (kN)', 'FontSize', 10);
+            title('Front Tire Force vs. Slip Angle', 'FontSize', 12);
+            
+            %% Plot the rear tire force curve
+            axes(right_bottom);
+            h_rear_curve = plot(alpha_deg, rear_forces / 1000, 'r-', 'LineWidth', 2);
+            hold on;
+            h_rear_point = plot(0, 0, 'ro', 'MarkerSize', 8, 'LineWidth', 2, 'Visible', 'off');
+            grid on;
+            
+            % Calculate rear tire saturation point
+            rear_sat_angle = atan(3*mu*temp_model.Fzr/Cr) * 180/pi;
+            
+            % Draw vertical lines at saturation angles
+            rear_sat_y_limits = get(gca, 'YLim');
+            plot([-rear_sat_angle, -rear_sat_angle], rear_sat_y_limits, 'k--', 'LineWidth', 1);
+            plot([rear_sat_angle, rear_sat_angle], rear_sat_y_limits, 'k--', 'LineWidth', 1);
+            
+            xlabel('Slip Angle (degrees)', 'FontSize', 10);
+            ylabel('Lateral Force (kN)', 'FontSize', 10);
+            title('Rear Tire Force vs. Slip Angle', 'FontSize', 12);
+            
+            %% Add a text box for numerical values
+            text_panel = uicontrol('Style', 'text', ...
+                                  'String', 'Click on the BRS to analyze tire forces', ...
+                                  'Position', [900, 20, 250, 100], ...
+                                  'BackgroundColor', 'white', ...
+                                  'HorizontalAlignment', 'left', ...
+                                  'FontSize', 10);
+            
+            %% Setup interactivity
+            % Store handles and parameters for callback function
+            data_for_callback = struct();
+            data_for_callback.h_point = h_point;
+            data_for_callback.h_front_point = h_front_point;
+            data_for_callback.h_rear_point = h_rear_point;
+            data_for_callback.text_panel = text_panel;
+            data_for_callback.vx = vx;
+            data_for_callback.Lf = Lf;
+            data_for_callback.Lr = Lr;
+            data_for_callback.m = m;
+            data_for_callback.Iz = Iz;
+            data_for_callback.mu = mu;
+            data_for_callback.Cf = Cf;
+            data_for_callback.Cr = Cr;
+            data_for_callback.Fzf = temp_model.Fzf;
+            data_for_callback.Fzr = temp_model.Fzr;
+            data_for_callback.front_sat_angle = front_sat_angle;
+            data_for_callback.rear_sat_angle = rear_sat_angle;
+            
+            % Set callback for mouse clicks on the BRS plot
+            set(fig, 'UserData', data_for_callback);
+            set(left_panel, 'ButtonDownFcn', @(src, event) analyzePoint(src, event, fig));
+            
+            % Add title to the figure
+            sgtitle(sprintf('Tire Force Analysis for v = %d m/s, Mzmax = %d N·m', ...
+                   velocities(v_idx), mzmax_values(m_idx)), 'FontSize', 14, 'FontWeight', 'bold');
+            
+            % Save figure if enabled
+            if opts.saveFigs
+                fig_filename = sprintf('tire_curves_v%d_mz%d.%s', ...
+                    velocities(v_idx), mzmax_values(m_idx), opts.figFormat);
+                saveas(fig, fullfile(fig_folder, fig_filename));
+                fprintf('Saved tire curve plot to %s\n', fullfile(fig_folder, fig_filename));
+            end
+        end
+    end
+end
+
+
+%% Nested function to generate derivative plot
+
     function generate_derivative_plots()
         disp('Generating derivative plots...');
         
@@ -172,25 +346,30 @@ disp('Visualization complete!');
                 legend([h_brs, h_zero], 'BRS Boundary', 'dV/dγ = 0', 'Location', 'best');
                 grid on;
                 
-                % 3. Plot derivative magnitude
-                subplot(2, 2, 3);
-                % Calculate gradient magnitude (Euclidean norm)
-                gradient_magnitude = sqrt(gamma_derivative.^2 + beta_derivative.^2);
-                
-                magnitude_plot = pcolor(xs1_deg, xs2_deg, gradient_magnitude);
-                magnitude_plot.EdgeColor = 'none';
-                colormap(gca, 'hot');
-                cb = colorbar;
-                title(cb, '||∇V||');
-                hold on;
-                
-                % Add BRS boundary
-                [~, h_brs] = contour(xs1_deg, xs2_deg, current_brs, [0 0], 'LineWidth', 2, 'Color', 'k');
-                
-                title('Gradient Magnitude ||∇V||', 'FontSize', 12);
-                xlabel('Sideslip Angle (degrees)', 'FontSize', 10);
-                ylabel('Yaw Rate (degrees/s)', 'FontSize', 10);
-                grid on;
+               % 3. Plot derivative magnitude (logarithmic scale)
+               subplot(2, 2, 3);
+               % Calculate gradient magnitude (Euclidean norm)
+               gradient_magnitude = sqrt(gamma_derivative.^2 + beta_derivative.^2);
+            
+               % Apply logarithmic scaling (add small epsilon to avoid log(0))
+               epsilon = 1e-10;
+               log_magnitude = log10(gradient_magnitude + epsilon);
+            
+               % Plot with logarithmic scale
+               magnitude_plot = pcolor(xs1_deg, xs2_deg, log_magnitude);
+               magnitude_plot.EdgeColor = 'none';
+               colormap(gca, 'hot');
+               cb = colorbar;
+               title(cb, 'log_{10}(||∇V||)');
+               hold on;
+            
+               % Add BRS boundary
+               [~, h_brs] = contour(xs1_deg, xs2_deg, current_brs, [0 0], 'LineWidth', 2, 'Color', 'k');
+            
+               title('Gradient Magnitude (Log Scale)', 'FontSize', 12);
+               xlabel('Sideslip Angle (degrees)', 'FontSize', 10);
+               ylabel('Yaw Rate (degrees/s)', 'FontSize', 10);
+               grid on;
                 
                 % 4. Vector field visualization of the gradient
                 subplot(2, 2, 4);
@@ -203,7 +382,7 @@ disp('Visualization complete!');
                 interp_beta_deriv = interp2(xs1_deg, xs2_deg, beta_derivative, X, Y);
                 
                 % Normalize for better visualization
-                magnitudes = sqrt(interp_gamma_deriv.^2 + interp_beta_deriv.^2);
+                magnitudes = log10(sqrt(interp_gamma_deriv.^2 + interp_beta_deriv.^2));
                 max_mag = max(magnitudes(:));
                 norm_factor = 1 / max_mag;
                 
@@ -211,7 +390,7 @@ disp('Visualization complete!');
                 norm_beta_deriv = interp_beta_deriv * norm_factor;
                 
                 % Create vector field
-                h_quiver = quiver(X, Y, norm_beta_deriv, norm_gamma_deriv, 0.5, 'k');
+                h_quiver = quiver(X, Y, -norm_beta_deriv, -norm_gamma_deriv, 0.5, 'k');
                 hold on;
                 
                 % Add BRS boundary
@@ -711,6 +890,106 @@ disp('Visualization complete!');
             end        
         end
     end
+
+% Helper function to calculate tire forces (similar to the one in NonlinearBicycle)
+function Fy = calculateTireForce(alpha, C, Fz, mu)
+    % Threshold for linear region
+    threshold = atan(3*mu*Fz/C);
+    
+    if abs(alpha) < threshold
+        % Linear region with smoothing toward saturation
+        Fy = -(-C * alpha + C^2/(3*mu*Fz) * abs(alpha) * alpha - ...
+             (1/3) * C^3/(3*mu*Fz)^2 * alpha^3);
+    else
+        % Saturation region
+        Fy = mu*Fz * sign(alpha);
+    end
+end
+
+% Callback function for mouse clicks on the BRS plot
+function analyzePoint(src, event, fig_handle)
+    % Get the clicked point in axis coordinates
+    point = get(src, 'CurrentPoint');
+    x_click = point(1, 1); % Sideslip angle in degrees
+    y_click = point(1, 2); % Yaw rate in degrees
+    
+    % Convert to radians for calculations
+    beta = x_click * pi/180;
+    gamma = y_click * pi/180;
+    
+    % Get stored data
+    data = get(fig_handle, 'UserData');
+    
+    % Update point marker on BRS plot
+    set(data.h_point, 'XData', x_click, 'YData', y_click, 'Visible', 'on');
+    
+    % Calculate slip angles
+    % Front slip angle: alpha_f = beta + (Lf*gamma/vx)
+    % Rear slip angle: alpha_r = beta - (Lr*gamma/vx)
+    alpha_f = beta + (data.Lf*gamma/data.vx);
+    alpha_r = beta - (data.Lr*gamma/data.vx);
+    
+    % Convert to degrees for display
+    alpha_f_deg = alpha_f * 180/pi;
+    alpha_r_deg = alpha_r * 180/pi;
+    
+    % Calculate tire forces
+    Fyf = calculateTireForce(alpha_f, data.Cf, data.Fzf, data.mu);
+    Fyr = calculateTireForce(alpha_r, data.Cr, data.Fzr, data.mu);
+    
+    % Calculate total lateral force and moment
+    F_lat = Fyf + Fyr;
+    M_z = data.Lf*Fyf - data.Lr*Fyr;
+    
+    % Calculate lateral acceleration
+    ay = F_lat / data.m;
+    
+    % Update points on the tire force curves
+    set(data.h_front_point, 'XData', alpha_f_deg, 'YData', Fyf/1000, 'Visible', 'on');
+    set(data.h_rear_point, 'XData', alpha_r_deg, 'YData', Fyr/1000, 'Visible', 'on');
+    
+    % Calculate utilization percentages
+    front_utilization = abs(Fyf)/(data.mu*data.Fzf)*100;
+    rear_utilization = abs(Fyr)/(data.mu*data.Fzr)*100;
+    
+    % Update text box with numerical values
+    info_text = sprintf(['Selected Point:\n', ...
+                       '  Sideslip Angle (β): %.2f°\n', ...
+                       '  Yaw Rate (γ): %.2f°/s\n\n', ...
+                       'Tire Slip Angles:\n', ...
+                       '  Front (αf): %.2f° %s\n', ...
+                       '  Rear (αr): %.2f° %s\n\n', ...
+                       'Tire Forces:\n', ...
+                       '  Front: %.2f kN\n', ...
+                       '  Rear: %.2f kN\n', ...
+                       '  Total Lat: %.2f kN\n', ...
+                       '  Yaw Moment: %.2f kN·m\n\n', ...
+                       'Force Utilization:\n', ...
+                       '  Front: %.1f%%\n', ...
+                       '  Rear: %.1f%%\n\n', ...
+                       'Lat. Accel: %.2f m/s²'], ...
+                       x_click, y_click, ...
+                       alpha_f_deg, saturationStatus(abs(alpha_f_deg), data.front_sat_angle), ...
+                       alpha_r_deg, saturationStatus(abs(alpha_r_deg), data.rear_sat_angle), ...
+                       Fyf/1000, Fyr/1000, ...
+                       F_lat/1000, M_z/1000, ...
+                       front_utilization, ...
+                       rear_utilization, ...
+                       ay);
+    
+    set(data.text_panel, 'String', info_text);
+end
+
+% Helper function to show saturation status
+function status = saturationStatus(angle, sat_angle)
+    if angle >= sat_angle * 0.95
+        status = '(saturated)';
+    elseif angle >= sat_angle * 0.7
+        status = '(near sat)';
+    else
+        status = '';
+    end
+end
 
 
 %% Helper function to extract costates (gradients) from the value function

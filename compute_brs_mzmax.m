@@ -134,22 +134,24 @@ for v_idx = 1:length(velocities)
                 velocities(v_idx), mzmax_values(m_idx));
         
         % Define dynamic system with current velocity and Mzmax
-        dCar = NonlinearBicycle([0; 0], params);
+        dCar = DoubleInt([0; 0], [-mzmax_values, mzmax_values]);
+        % dCar = NonlinearBicycle([0, 0], params);
         
         % Put grid and dynamic systems into schemeData
         schemeData.grid = g;
         schemeData.dynSys = dCar;
-        schemeData.accuracy = 'high'; % Set accuracy
+        schemeData.accuracy = 'veryHigh'; % Set accuracy
         schemeData.uMode = opts.uMode;
         
         % Setup visualization options
+        HJIextraArgs.visualize.valueFunction = true;
         HJIextraArgs.visualize.valueSet = true;
         HJIextraArgs.visualize.initialValueSet = true;
         HJIextraArgs.visualize.figNum = 1;
         HJIextraArgs.visualize.deleteLastPlot = true;
         
         % Solve HJ PDE to get backward reachable sets
-        [data, tau2, extraOuts] = HJIPDE_solve(data0, tau, schemeData, 'set', HJIextraArgs);
+        [data, tau2, extraOuts] = HJIPDE_solve(data0, tau, schemeData, 'none', HJIextraArgs);
         
         % Store the computed data
         all_data{v_idx, m_idx} = data(:,:,end);
@@ -226,15 +228,17 @@ function derivs = extractCostates(g, data)
             deriv_right(:, end) = (data(:, end) - data(:, end-1)) / g.dx(i);
         end
         
+        derivs{i} = (deriv_left + deriv_right) / 2;
+
         % Choose derivative based on the sign of the Hamiltonian
         % For target reaching, take the derivative that would lead to a larger Hamiltonian value
-        if i == 1  % beta dimension
-            % The sign would depend on the system dynamics - for simplicity,
-            % we'll use central differencing here
-            derivs{i} = (deriv_left + deriv_right) / 2;
-        else  % gamma dimension - critical for control determination
-            derivs{i} = deriv_left;
-            derivs{i}(deriv_right < deriv_left) = deriv_right(deriv_right < deriv_left);
-        end
+        % if i == 1  % beta dimension
+        %     % The sign would depend on the system dynamics - for simplicity,
+        %     % we'll use central differencing here
+        %     derivs{i} = (deriv_left + deriv_right) / 2;
+        % else  % gamma dimension - critical for control determination
+        %     derivs{i} = deriv_left;
+        %     derivs{i}(deriv_right < deriv_left) = deriv_right(deriv_right < deriv_left);
+        % end
     end
 end
