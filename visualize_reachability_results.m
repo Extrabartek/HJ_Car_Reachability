@@ -1401,7 +1401,7 @@ disp('Visualization complete!');
         % Find and plot the control switching surface if we have control data
         if ~isempty(control_slice)
             % For 3D BRS, need to extract 2D derivatives
-            derivs = extract2DCostates(g, data_slice);
+            derivs = extractCostates(g, data_slice);
             switching_condition = derivs{2};  % The derivative w.r.t. delta
             
             % Plot switching surface

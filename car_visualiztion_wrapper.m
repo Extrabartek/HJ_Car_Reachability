@@ -10,12 +10,12 @@ close all;
 %% Define folder paths to your BRS results
 % Replace with your actual path to BRS results folder
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250416_154943_vx30-30_dvmax20-20'); 
+brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250428_171755_vx30-30_dvmax20-20'); 
                                                             
 
 %% Define the initial state for trajectory computation
 % Format: [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
-xinit = [deg2rad(0); deg2rad(-10); deg2rad(-19)];
+xinit = [deg2rad(0); deg2rad(-5); deg2rad(-5)];
 
 %% Set parameters for trajectory computation and visualization
 compute_new_trajectory = true;  % Set to false to load a previously saved trajectory

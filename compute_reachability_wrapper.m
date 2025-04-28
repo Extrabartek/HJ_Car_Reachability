@@ -16,7 +16,7 @@ clear; clc;
 % ---------------------------------------------------
 
 %% Select if you want to load or produce results
-generate_results = true;     % Set to false to load existing results
+generate_results = false;     % Set to false to load existing results
 visualize_results = true;    % Set to false to skip visualization
 save_plots = false;          % Set to true to save visualization figures
 
@@ -41,22 +41,22 @@ dt = 0.05;                   % Time step [s]
 % Grid size: Number of grid points in each dimension
 % - For 'mz': [nx, ny] for [yaw rate, sideslip]
 % - For 'dv': [nx, ny, nz] for [yaw rate, sideslip, steering]
-gridSize = [101, 101, 51];               % Empty = use defaults based on controlType
+gridSize = [];               % Empty = use defaults based on controlType
                              % Default for 'mz': [71, 71]
                              % Default for 'dv': [51, 51, 51]
 
 % Grid limits in degrees (will be converted to radians)
 % - For 'mz': [gamma_min, beta_min] and [gamma_max, beta_max]
 % - For 'dv': [gamma_min, beta_min, delta_min] and [gamma_max, beta_max, delta_max]
-gridMin_deg = [-150, -25, -10];            % Empty = use defaults based on controlType
-gridMax_deg = [150, 25, 10];            % Empty = use defaults based on controlType
+gridMin_deg = [];            % Empty = use defaults based on controlType
+gridMax_deg = [];            % Empty = use defaults based on controlType
                              % Default for 'mz': [-150, -25] to [150, 25]
                              % Default for 'dv': [-150, -25, -10] to [150, 25, 10]
 
 % Target set size in degrees (will be converted to radians)
 % - For 'mz': [gamma_size, beta_size]
 % - For 'dv': [gamma_size, beta_size, delta_size]
-targetSize_deg = [15, 2, 1];         % Empty = use defaults based on controlType
+targetSize_deg = [];         % Empty = use defaults based on controlType
                              % Default for 'mz': [15, 6]
                              % Default for 'dv': [15, 3, 1]
 
@@ -68,16 +68,14 @@ uMode = 'min';                  % Control strategy: 'min', 'max', or '' (empty =
 accuracy = 'veryHigh';           % Numerical accuracy: 'low', 'medium', 'high', 'veryhigh'
 
 %% Path to existing results folder (only used if generate_results = false)
-existing_result_folder = '';  % Path to the results folder to load
+main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
+existing_result_folder = strcat(main_results_folder, 'steered_brs_results_20250428_171755_vx30-30_dvmax20-20');  % Path to the results folder to load
 
 %% Visualization options
 % Types of plots to generate (cell array of strings)
-% Options for 'mz' control: 'control', 'detailed', 'comparison', 'derivative', 'velocity_stack'
+% Options for 'mz' control: 'control', 'detailed', 'comparison', 'derivative', 'velocity_stack', 'tire'
 % Options for 'dv' control: 'slices', 'detailed', 'comparison'
 plot_types = {'control', 'detailed'};  % Default visualization types
-
-% Whether to show 3D visualization for steered bicycle model (only applies if controlType = 'dv')
-show_3d_viz = false;
 
 % ---------------------------------------------------
 % END OF CONFIGURATION PARAMETERS - DO NOT EDIT BELOW THIS LINE UNLESS YOU KNOW WHAT YOU'RE DOING
@@ -190,55 +188,34 @@ end
 if visualize_results && ~isempty(result_folder)
     fprintf('Generating visualizations...\n');
     
-    % Determine appropriate visualization function based on model type
-    if strcmp(controlType, 'mz')
-        % For NonlinearBicycle model
-        if exist('visualize_reachability_results', 'file')
-            % Use unified visualization function if available
-            visualize_reachability_results(result_folder, ...
-                'plotType', plot_types, ...
-                'saveFigs', save_plots, ...
-                'figFormat', 'png');
-        else
-            % Use legacy visualization functions
-            if strcmp(direction, 'backward')
-                visualize_brs_results(result_folder, ...
-                    'plotType', plot_types, ...
-                    'saveFigs', save_plots, ...
-                    'figFormat', 'png');
-            else
-                visualize_frs_results(result_folder, ...
-                    'plotType', plot_types, ...
-                    'saveFigs', save_plots, ...
-                    'figFormat', 'png');
-            end
-        end
-    else
-        % For NonlinearBicycleSteered model
-        if strcmp(direction, 'backward')
-            visualize_brs_results_steered(result_folder, ...
-                'plotType', plot_types, ...
-                'saveFigs', save_plots, ...
-                'figFormat', 'png');
-        else
-            visualize_frs_results_steered(result_folder, ...
-                'plotType', plot_types, ...
-                'saveFigs', save_plots, ...
-                'figFormat', 'png');
-        end
-        
-        % Generate 3D visualization if requested
-        if show_3d_viz
-            visualize_3d_reachable_sets(result_folder);
+    % Set up visualization options
+    viz_options = struct();
+    viz_options.plotType = plot_types;
+    viz_options.saveFigs = save_plots;
+    viz_options.figFormat = 'png';
+    viz_options.controlIdx = 1;  % Use first control limit by default
+    viz_options.velocityIdx = 1; % Use first velocity by default
+    
+    % Add model-specific options
+    if strcmp(controlType, 'dv')
+        % For 3D steered bicycle model
+        if ~isempty(gridSize) && length(gridSize) == 3
+            % For 3D model, can specify which delta slices to visualize
+            viz_options.deltaSlices = [-0.1, 0, 0.1]; % Default slices
         end
     end
     
-    fprintf('Visualization complete.\n');
-end
+    % Check if unified visualization function exists
+    if exist('visualize_reachability_results', 'file')
+        % Use the unified visualization function 
+        visualize_reachability_results(result_folder, viz_options);
+    
+    end
 
 fprintf('All processing completed successfully!\n');
 if ~isempty(result_folder)
     fprintf('Results saved to: %s\n', result_folder);
 end
 
+end
 end
