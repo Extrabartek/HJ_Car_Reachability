@@ -266,7 +266,7 @@ for v_idx = 1:length(velocities)
         % Put grid and dynamic systems into schemeData
         schemeData.grid = g;
         schemeData.dynSys = dCar;
-        schemeData.accuracy = opts.accuracy;
+        schemeData.accuracy = 'veryHigh';
         schemeData.uMode = opts.uMode;
         
         % Set computation direction (forward/backward)
@@ -275,7 +275,6 @@ for v_idx = 1:length(velocities)
         end
         
         % Setup visualization options
-        HJIextraArgs.visualize = opts.visualize;
         if opts.visualize
             HJIextraArgs.visualize.valueSet = true;
             HJIextraArgs.visualize.initialValueSet = true;
@@ -364,9 +363,10 @@ end
 % Save combined results
 disp('Saving combined results...');
 if strcmp(opts.controlType, 'mz')
+    mzmax_values = control_limits;
     save(fullfile(result_folder, [type_prefix, '_combined_results.mat']), ...
          'g', 'data0', 'all_data', 'all_data_full', 'control_data', ...
-         'velocities', 'control_limits', 'tau', 'base_params');
+         'velocities', 'mzmax_values', 'tau', 'base_params');
 else
     % Rename control_limits to dvmax_values for backward compatibility
     dvmax_values = control_limits;
