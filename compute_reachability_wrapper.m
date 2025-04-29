@@ -16,26 +16,26 @@ clear; clc;
 % ---------------------------------------------------
 
 %% Select if you want to load or produce results
-generate_results = false;     % Set to false to load existing results
-visualize_results = true;    % Set to false to skip visualization
+generate_results = true;     % Set to false to load existing results
+visualize_results = false;    % Set to false to skip visualization
 save_plots = false;          % Set to true to save visualization figures
 
 %% Computation type
-direction = 'backward';      % Options: 'backward' (BRS) or 'forward' (FRS)
+direction = 'forward';      % Options: 'backward' (BRS) or 'forward' (FRS)
 controlType = 'dv';          % Options: 'mz' (yaw moment) or 'dv' (steering rate)
 
 %% Vehicle parameters
-velocities = [30];           % Vehicle velocities to test [m/s]
+velocities = [20];           % Vehicle velocities to test [m/s]
 
 %% Control limits
 % - If controlType = 'mz': These are max yaw moments [N·m]
 % - If controlType = 'dv': These are max steering rates [deg/s] - will be converted to [rad/s]
-control_limits = [20];    % For 'mz' control: [10000] means 10,000 N·m
+control_limits = [40];    % For 'mz' control: [10000] means 10,000 N·m
                              % For 'dv' control: [20] means 20 deg/s
 
 %% Time parameters
-tMax = 1.0;                  % Maximum simulation time [s]
-dt = 0.05;                   % Time step [s]
+tMax = 1.5;                  % Maximum simulation time [s]
+dt = 0.1;                   % Time step [s]
 
 %% Grid parameters
 % Grid size: Number of grid points in each dimension
@@ -48,8 +48,8 @@ gridSize = [];               % Empty = use defaults based on controlType
 % Grid limits in degrees (will be converted to radians)
 % - For 'mz': [gamma_min, beta_min] and [gamma_max, beta_max]
 % - For 'dv': [gamma_min, beta_min, delta_min] and [gamma_max, beta_max, delta_max]
-gridMin_deg = [];            % Empty = use defaults based on controlType
-gridMax_deg = [];            % Empty = use defaults based on controlType
+gridMin_deg = [-100, -15, -10];            % Empty = use defaults based on controlType
+gridMax_deg = [100, 15, 10];            % Empty = use defaults based on controlType
                              % Default for 'mz': [-150, -25] to [150, 25]
                              % Default for 'dv': [-150, -25, -10] to [150, 25, 10]
 
@@ -61,7 +61,7 @@ targetSize_deg = [];         % Empty = use defaults based on controlType
                              % Default for 'dv': [15, 3, 1]
 
 %% Advanced parameters
-uMode = 'min';               % Control strategy: 'min', 'max', or '' (empty = use default)
+uMode = '';               % Control strategy: 'min', 'max', or '' (empty = use default)
                              % Default for 'backward': 'min'
                              % Default for 'forward': 'max'
 
@@ -69,13 +69,13 @@ accuracy = 'veryHigh';           % Numerical accuracy: 'low', 'medium', 'high', 
 
 %% Path to existing results folder (only used if generate_results = false)
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-existing_result_folder = strcat(main_results_folder, 'steered_brs_results_20250428_171755_vx30-30_dvmax20-20');  % Path to the results folder to load
+existing_result_folder = strcat(main_results_folder, 'steered_frs_results_20250429_153753_vx20-20_dvmax60-60');  % Path to the results folder to load
 
 %% Visualization options
 % Types of plots to generate (cell array of strings)
 % Options for 'mz' control: 'control', 'detailed', 'comparison', 'derivative', 'velocity_stack', 'tire'
 % Options for 'dv' control: 'slices', 'detailed', 'comparison'
-plot_types = {'slices', 'detailed'};  % Default visualization types
+plot_types = {};  % Default visualization types
 
 % ---------------------------------------------------
 % END OF CONFIGURATION PARAMETERS - DO NOT EDIT BELOW THIS LINE UNLESS YOU KNOW WHAT YOU'RE DOING

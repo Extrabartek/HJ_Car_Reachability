@@ -22,10 +22,10 @@ main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Re
 
 %% Reachability result selection
 % Path to the reachability results folder
-brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250428_171755_vx30-30_dvmax20-20');
+brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250429_142622_vx30-30_dvmax20-20');
 
 % Optional: Path to FRS results folder (for safety constraints) - leave empty to disable
-frs_folder = '';  % Set to an actual folder path to enable FRS constraints
+frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250429_153753_vx20-20_dvmax60-60');  % Set to an actual folder path to enable FRS constraints
 
 %% Visualization options
 visualize_reachable_sets = true;  % Set to true to visualize reachable sets
@@ -42,7 +42,7 @@ trajectory_file = 'trajectory_data.mat';  % For loading/saving trajectory data
 % Initial state for trajectory computation
 % Format: [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
 % Example: 10 deg/s yaw rate, 5 deg sideslip, 3 deg steering
-xinit = [deg2rad(10); deg2rad(5); deg2rad(3)];
+xinit = [deg2rad(0); deg2rad(-5); deg2rad(0)];
 
 % Trajectory computation method - options: 'arrival', 'gradient', or 'legacy'
 % 'arrival'  - Uses time-of-arrival function for guidance (fastest)
@@ -53,7 +53,7 @@ trajectory_method = 'gradient';
 % Parameters for trajectory computation
 velocity_idx = 1;               % Index of velocity to use from BRS data
 control_idx = 1;                % Index of control limit to use (dv_max or Mz)
-max_time = 3.0;                 % Maximum trajectory time (seconds)
+max_time = 10.0;                 % Maximum trajectory time (seconds)
 use_frs_constraint = false;     % Use FRS for safety constraints
 frs_weight = 0.5;               % Weight for FRS constraints (0-1)
 
