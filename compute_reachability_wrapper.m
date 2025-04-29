@@ -61,7 +61,7 @@ targetSize_deg = [];         % Empty = use defaults based on controlType
                              % Default for 'dv': [15, 3, 1]
 
 %% Advanced parameters
-uMode = 'min';                  % Control strategy: 'min', 'max', or '' (empty = use default)
+uMode = 'min';               % Control strategy: 'min', 'max', or '' (empty = use default)
                              % Default for 'backward': 'min'
                              % Default for 'forward': 'max'
 
@@ -75,7 +75,7 @@ existing_result_folder = strcat(main_results_folder, 'steered_brs_results_202504
 % Types of plots to generate (cell array of strings)
 % Options for 'mz' control: 'control', 'detailed', 'comparison', 'derivative', 'velocity_stack', 'tire'
 % Options for 'dv' control: 'slices', 'detailed', 'comparison'
-plot_types = {'control', 'detailed'};  % Default visualization types
+plot_types = {'slices', 'detailed'};  % Default visualization types
 
 % ---------------------------------------------------
 % END OF CONFIGURATION PARAMETERS - DO NOT EDIT BELOW THIS LINE UNLESS YOU KNOW WHAT YOU'RE DOING
