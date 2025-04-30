@@ -303,7 +303,8 @@ end
 
 %% Helper function for 3D visualization
 function visualize_3d_safe_set(g, safe_set, brs, frs, velocity, control_limit, control_type)
-    % Create a figure for visualization
+    % Create figures for visualization
+    % Figure 1: 2D slices
     figure('Name', 'Safe Set Visualization (3D Slices)', 'Position', [100, 100, 1200, 800]);
     
     % Get the 3rd dimension values (steering angle)
@@ -364,5 +365,186 @@ function visualize_3d_safe_set(g, safe_set, brs, frs, velocity, control_limit, c
     else
         sgtitle(sprintf('Safe Set Slices (v = %d m/s, Mzmax = %d N·m)', ...
                 velocity, control_limit), 'FontSize', 16, 'FontWeight', 'bold');
+    end
+    
+    % Figure 2: 3D Isosurface Visualization (similar to visualizeCarTrajectory)
+    visualize_3d_isosurfaces(g, safe_set, brs, frs, velocity, control_limit, control_type);
+end
+
+%% Helper function for 3D isosurface visualization
+function visualize_3d_isosurfaces(g, safe_set, brs, frs, velocity, control_limit, control_type)
+    % Create a figure for 3D visualization
+    fig = figure('Name', 'Safe Set 3D Isosurfaces', 'Position', [100, 100, 1000, 800]);
+    
+    % Convert grid values from radians to degrees for visualization
+    [beta_grid, gamma_grid, delta_grid] = meshgrid(...
+        g.xs{2}(1,:,1) * 180/pi,...  % beta (sideslip angle)
+        g.xs{1}(:,1,1) * 180/pi,...  % gamma (yaw rate)
+        g.xs{3}(1,1,:) * 180/pi);    % delta (steering angle)
+    
+    % Create isosurfaces for each set
+    isovalue = 0;  % The level set boundary
+    
+    % Create colormap for visualization
+    colormap(jet);
+    
+    % Create axes for plot with room for buttons at bottom
+    ax = axes('Position', [0.1, 0.15, 0.8, 0.8]);
+    
+    % Plot the isosurfaces
+    hold on;
+    
+    % Create empty handles for surfaces
+    h_brs = [];
+    h_frs = [];
+    h_safe = [];
+    
+    % BRS isosurface
+    [brs_faces, brs_verts] = isosurface(beta_grid, gamma_grid, delta_grid, brs, isovalue);
+    if ~isempty(brs_faces)
+        h_brs = patch('Faces', brs_faces, 'Vertices', brs_verts, ...
+                    'FaceColor', 'blue', 'EdgeColor', 'none', 'FaceAlpha', 0.2);
+    end
+    
+    % FRS isosurface
+    [frs_faces, frs_verts] = isosurface(beta_grid, gamma_grid, delta_grid, frs, isovalue);
+    if ~isempty(frs_faces)
+        h_frs = patch('Faces', frs_faces, 'Vertices', frs_verts, ...
+                    'FaceColor', 'red', 'EdgeColor', 'none', 'FaceAlpha', 0.2);
+    end
+    
+    % Safe set isosurface (intersection)
+    [safe_faces, safe_verts] = isosurface(beta_grid, gamma_grid, delta_grid, safe_set, isovalue);
+    if ~isempty(safe_faces)
+        h_safe = patch('Faces', safe_faces, 'Vertices', safe_verts, ...
+                    'FaceColor', 'green', 'EdgeColor', 'none', 'FaceAlpha', 0.4);
+    end
+    
+    % Add a title
+    if strcmp(control_type, 'dv')
+        title_str = sprintf('3D Safe Set Isosurfaces (v = %d m/s, dvmax = %.1f°/s)', ...
+                velocity, control_limit*180/pi);
+    else
+        title_str = sprintf('3D Safe Set Isosurfaces (v = %d m/s, Mzmax = %d N·m)', ...
+                velocity, control_limit);
+    end
+    title(title_str, 'FontSize', 14, 'FontWeight', 'bold');
+    
+    % Add labels
+    xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
+    ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
+    zlabel('Steering Angle (degrees)', 'FontSize', 12);
+    
+    % Set axis limits to show the whole domain (converted to degrees)
+    xlim([g.min(2) * 180/pi, g.max(2) * 180/pi]);  % Sideslip angle (beta)
+    ylim([g.min(1) * 180/pi, g.max(1) * 180/pi]);  % Yaw rate (gamma)
+    zlim([g.min(3) * 180/pi, g.max(3) * 180/pi]);  % Steering angle (delta)
+    
+    % Add legend (only for non-empty handles)
+    legend_handles = [];
+    legend_labels = {};
+    
+    if ~isempty(h_brs)
+        legend_handles = [legend_handles, h_brs];
+        legend_labels{end+1} = 'BRS';
+    end
+    
+    if ~isempty(h_frs)
+        legend_handles = [legend_handles, h_frs];
+        legend_labels{end+1} = 'FRS';
+    end
+    
+    if ~isempty(h_safe)
+        legend_handles = [legend_handles, h_safe];
+        legend_labels{end+1} = 'Safe Set';
+    end
+    
+    if ~isempty(legend_handles)
+        legend(legend_handles, legend_labels, 'Location', 'northeast');
+    end
+    
+    % Set up lighting and view angle for better 3D visualization
+    lighting gouraud;
+    camlight('headlight');
+    material dull;
+    view([-30, 30]);
+    grid on;
+    
+    % Add edge highlighting to make surfaces more visible
+    % Use isonormals for better shading
+    if ~isempty(h_brs)
+        isonormals(beta_grid, gamma_grid, delta_grid, brs, h_brs);
+    end
+    
+    if ~isempty(h_frs)
+        isonormals(beta_grid, gamma_grid, delta_grid, frs, h_frs);
+    end
+    
+    if ~isempty(h_safe)
+        isonormals(beta_grid, gamma_grid, delta_grid, safe_set, h_safe);
+    end
+    
+    % Make the figure interactive
+    rotate3d on;
+    
+    % Add an info text about interaction
+    text(g.min(2) * 180/pi, g.min(1) * 180/pi, g.max(3) * 180/pi, ...
+         'Click and drag to rotate view', ...
+         'FontSize', 10, 'Color', 'k', 'VerticalAlignment', 'top');
+    
+    % Add toggle buttons for each surface
+    btn_width = 100;
+    btn_height = 30;
+    spacing = 20;
+    
+    % Position calculation for centered buttons
+    fig_width = fig.Position(3);
+    total_btn_width = 3*btn_width + 2*spacing;
+    left_pos = (fig_width - total_btn_width) / 2;
+    
+    % BRS Toggle Button
+    brs_btn = uicontrol('Style', 'togglebutton', ...
+                        'String', 'BRS (Blue)', ...
+                        'Position', [left_pos, 20, btn_width, btn_height], ...
+                        'Value', 1, ...  % Initially on
+                        'BackgroundColor', [0.8 0.8 1], ... % Light blue
+                        'FontWeight', 'bold');
+                    
+    % FRS Toggle Button
+    frs_btn = uicontrol('Style', 'togglebutton', ...
+                        'String', 'FRS (Red)', ...
+                        'Position', [left_pos + btn_width + spacing, 20, btn_width, btn_height], ...
+                        'Value', 1, ...  % Initially on
+                        'BackgroundColor', [1 0.8 0.8], ... % Light red
+                        'FontWeight', 'bold');
+                    
+    % Safe Set Toggle Button
+    safe_btn = uicontrol('Style', 'togglebutton', ...
+                        'String', 'Safe Set (Green)', ...
+                        'Position', [left_pos + 2*(btn_width + spacing), 20, btn_width, btn_height], ...
+                        'Value', 1, ...  % Initially on
+                        'BackgroundColor', [0.8 1 0.8], ... % Light green
+                        'FontWeight', 'bold');
+    
+    % Set callbacks for toggle buttons
+    set(brs_btn, 'Callback', @(src, event) toggleVisibility(src, h_brs));
+    set(frs_btn, 'Callback', @(src, event) toggleVisibility(src, h_frs));
+    set(safe_btn, 'Callback', @(src, event) toggleVisibility(src, h_safe));
+    
+    % Toggle visibility callback function
+    function toggleVisibility(src, handle)
+        if isempty(handle)
+            return; % Skip if handle is empty (surface doesn't exist)
+        end
+        
+        % Get button state
+        is_visible = get(src, 'Value');
+        
+        % Set visibility
+        if is_visible
+            set(handle, 'Visible', 'on');
+        else
+            set(handle, 'Visible', 'off');
+        end
     end
 end
