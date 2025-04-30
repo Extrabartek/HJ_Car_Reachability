@@ -34,22 +34,22 @@ control_limits = [40];    % For 'mz' control: [10000] means 10,000 N·m
                              % For 'dv' control: [20] means 20 deg/s
 
 %% Time parameters
-tMax = 1.5;                  % Maximum simulation time [s]
+tMax = 2.5;                  % Maximum simulation time [s]
 dt = 0.1;                   % Time step [s]
 
 %% Grid parameters
 % Grid size: Number of grid points in each dimension
 % - For 'mz': [nx, ny] for [yaw rate, sideslip]
 % - For 'dv': [nx, ny, nz] for [yaw rate, sideslip, steering]
-gridSize = [];               % Empty = use defaults based on controlType
+gridSize = [199, 199, 21];               % Empty = use defaults based on controlType
                              % Default for 'mz': [71, 71]
                              % Default for 'dv': [51, 51, 51]
 
 % Grid limits in degrees (will be converted to radians)
 % - For 'mz': [gamma_min, beta_min] and [gamma_max, beta_max]
 % - For 'dv': [gamma_min, beta_min, delta_min] and [gamma_max, beta_max, delta_max]
-gridMin_deg = [-100, -15, -10];            % Empty = use defaults based on controlType
-gridMax_deg = [100, 15, 10];            % Empty = use defaults based on controlType
+gridMin_deg = [-100, -15, -5];            % Empty = use defaults based on controlType
+gridMax_deg = [100, 15, 5];            % Empty = use defaults based on controlType
                              % Default for 'mz': [-150, -25] to [150, 25]
                              % Default for 'dv': [-150, -25, -10] to [150, 25, 10]
 

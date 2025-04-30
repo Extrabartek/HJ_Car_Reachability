@@ -65,6 +65,9 @@ frs_data = load(frs_combined_file);
 g = brs_data.g;
 is_3d_model = (length(g.N) == 3);
 
+% Extract target set
+target_set = brs_data.data0;
+
 % Check grid compatibility
 if ~isequal(g.N, frs_data.g.N) || ~isequal(g.min, frs_data.g.min) || ~isequal(g.max, frs_data.g.max)
     error('BRS and FRS grids are not compatible');
@@ -104,6 +107,10 @@ end
 % Get velocities and check compatibility
 brs_velocities = brs_data.velocities;
 frs_velocities = frs_data.velocities;
+
+% Extract maximum time information
+brs_tMax = max(brs_data.tau);
+frs_tMax = max(frs_data.tau);
 
 % Validate indices
 if opts.velocity_idx > length(brs_velocities) || opts.velocity_idx > length(frs_velocities)
@@ -175,7 +182,7 @@ if opts.save_results
     fprintf('Saving safe set results...\n');
     save(fullfile(result_folder, 'safe_set_data.mat'), ...
         'g', 'safe_set_value_function', 'brs_value_function', 'frs_value_function', ...
-        'velocity', 'control_limit', 'control_type');
+        'velocity', 'control_limit', 'control_type', 'brs_tMax', 'frs_tMax', 'target_set');
 else
     result_folder = '';
 end
@@ -203,11 +210,13 @@ if opts.visualize
     fprintf('Visualizing safe set...\n');
     
     if is_3d_model
-        % For 3D model, use the new interactive visualization
-        visualize_interactive_safe_set(g, safe_set_value_function, brs_value_function, frs_value_function, velocity, control_limit, control_type);
+        % For 3D model, use the interactive visualization with time information and target set
+        visualize_interactive_safe_set(g, safe_set_value_function, brs_value_function, frs_value_function,... 
+                                      velocity, control_limit, control_type, brs_tMax, frs_tMax, target_set);
     else
         % For 2D model, use the existing visualization
-        visualize_2d_safe_set(g, safe_set_value_function, brs_value_function, frs_value_function, velocity, control_limit, control_type);
+        visualize_2d_safe_set(g, safe_set_value_function, brs_value_function, frs_value_function,... 
+                             velocity, control_limit, control_type, brs_tMax, frs_tMax, target_set);
     end
     
     % Save figures if requested
@@ -227,7 +236,7 @@ end
 end
 
 %% Helper function for 2D visualization
-function visualize_2d_safe_set(g, safe_set, brs, frs, velocity, control_limit, control_type)
+function visualize_2d_safe_set(g, safe_set, brs, frs, velocity, control_limit, control_type, brs_tMax, frs_tMax, target_set)
     % Create a figure for visualization
     figure('Name', 'Safe Set Visualization (2D)', 'Position', [100, 100, 1200, 600]);
     
@@ -244,6 +253,12 @@ function visualize_2d_safe_set(g, safe_set, brs, frs, velocity, control_limit, c
     [~, h_frs] = contour(xs2_deg, xs1_deg, frs, [0 0], 'LineWidth', 2, 'Color', 'r');
     [~, h_safe] = contour(xs2_deg, xs1_deg, safe_set, [0 0], 'LineWidth', 3, 'Color', 'k');
     
+    % Plot target set if available
+    h_target = [];
+    if nargin >= 10 && ~isempty(target_set)
+        [~, h_target] = contour(xs2_deg, xs1_deg, target_set, [0 0], 'LineWidth', 2, 'Color', [0.8, 0.8, 0], 'LineStyle', '--');
+    end
+    
     % Shade the safe region
     safe_region = safe_set <= 0;
     [rows, cols] = find(safe_region);
@@ -257,17 +272,35 @@ function visualize_2d_safe_set(g, safe_set, brs, frs, velocity, control_limit, c
     xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
     ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
     
-    if strcmp(control_type, 'dv')
-        title_str = sprintf('Backward, Forward and Safe Sets (v = %d m/s, dvmax = %.1f°/s)', ...
-                velocity, control_limit*180/pi);
+    % Create title with time information
+    if nargin >= 8 && ~isempty(brs_tMax) && ~isempty(frs_tMax)
+        if strcmp(control_type, 'dv')
+            title_str = sprintf('Safe Set (v = %d m/s, dvmax = %.1f°/s, BRS tMax = %.1f s, FRS tMax = %.1f s)', ...
+                    velocity, control_limit*180/pi, brs_tMax, frs_tMax);
+        else
+            title_str = sprintf('Safe Set (v = %d m/s, Mzmax = %d N·m, BRS tMax = %.1f s, FRS tMax = %.1f s)', ...
+                    velocity, control_limit, brs_tMax, frs_tMax);
+        end
     else
-        title_str = sprintf('Backward, Forward and Safe Sets (v = %d m/s, Mzmax = %d N·m)', ...
-                velocity, control_limit);
+        if strcmp(control_type, 'dv')
+            title_str = sprintf('Safe Set (v = %d m/s, dvmax = %.1f°/s)', ...
+                    velocity, control_limit*180/pi);
+        else
+            title_str = sprintf('Safe Set (v = %d m/s, Mzmax = %d N·m)', ...
+                    velocity, control_limit);
+        end
     end
     
     title(title_str, 'FontSize', 14, 'FontWeight', 'bold');
-    legend([h_brs, h_frs, h_safe], 'Backward Reachable Set', 'Forward Reachable Set', ...
-            'Safe Set', 'Location', 'best');
+    
+    % Set up legend with or without target
+    if ~isempty(h_target)
+        legend([h_brs, h_frs, h_safe, h_target], 'Backward Reachable Set', 'Forward Reachable Set', ...
+                'Safe Set', 'Target Set', 'Location', 'best');
+    else
+        legend([h_brs, h_frs, h_safe], 'Backward Reachable Set', 'Forward Reachable Set', ...
+                'Safe Set', 'Location', 'best');
+    end
     
     grid on;
     axis equal;
@@ -287,6 +320,12 @@ function visualize_2d_safe_set(g, safe_set, brs, frs, velocity, control_limit, c
     
     % Add the zero level contour
     [~, h_zero] = contour3(X, Y, safe_interp, [0 0], 'LineWidth', 3, 'Color', 'k');
+    
+    % Add target set contour if available
+    if nargin >= 10 && ~isempty(target_set)
+        target_interp = interp2(xs2_deg, xs1_deg, target_set, X, Y, 'cubic');
+        [~, h_target3d] = contour3(X, Y, target_interp, [0 0], 'LineWidth', 3, 'Color', [0.8, 0.8, 0], 'LineStyle', '--');
+    end
     
     % Add colorbar and labels
     colormap(jet);
