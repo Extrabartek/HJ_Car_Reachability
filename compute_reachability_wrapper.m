@@ -21,7 +21,7 @@ visualize_results = false;    % Set to false to skip visualization
 save_plots = false;          % Set to true to save visualization figures
 
 %% Computation type
-direction = 'forward';      % Options: 'backward' (BRS) or 'forward' (FRS)
+direction = 'backward';      % Options: 'backward' (BRS) or 'forward' (FRS)
 controlType = 'dv';          % Options: 'mz' (yaw moment) or 'dv' (steering rate)
 
 %% Vehicle parameters

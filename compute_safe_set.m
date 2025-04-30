@@ -108,9 +108,8 @@ end
 brs_velocities = brs_data.velocities;
 frs_velocities = frs_data.velocities;
 
-% Extract maximum time information
-brs_tMax = max(brs_data.tau);
-frs_tMax = max(frs_data.tau);
+% Extract time vector
+tau = brs_data.tau;
 
 % Validate indices
 if opts.velocity_idx > length(brs_velocities) || opts.velocity_idx > length(frs_velocities)
@@ -142,17 +141,66 @@ else
     frs_c_idx = frs_c_idx(1);
 end
 
-%% Extract BRS and FRS value functions
-% Get BRS data (states that can reach the target)
-brs_value_function = brs_data.all_data{opts.velocity_idx, opts.control_idx};
+%% Extract BRS and FRS value functions (full time series)
+fprintf('Extracting BRS and FRS time series data...\n');
 
-% Get FRS data (states that can be reached from the initial states)
-frs_value_function = frs_data.all_data{frs_v_idx, frs_c_idx};
+% Check if full time series data is available
+if isfield(brs_data, 'all_data_full') && ~isempty(brs_data.all_data_full)
+    brs_value_function_full = brs_data.all_data_full{opts.velocity_idx, opts.control_idx};
+else
+    warning('Full time series BRS data not available, using final time slice only.');
+    brs_value_function_full = brs_data.all_data{opts.velocity_idx, opts.control_idx};
+end
 
-%% Compute the safe set as the intersection of BRS and FRS
-% For level set functions, intersection is the maximum of the value functions
-fprintf('Computing safe set as intersection of BRS and FRS...\n');
-safe_set_value_function = max(brs_value_function, frs_value_function);
+if isfield(frs_data, 'all_data_full') && ~isempty(frs_data.all_data_full)
+    frs_value_function_full = frs_data.all_data_full{frs_v_idx, frs_c_idx};
+else
+    warning('Full time series FRS data not available, using final time slice only.');
+    frs_value_function_full = frs_data.all_data{frs_v_idx, frs_c_idx};
+end
+
+%% Compute the safe set as the intersection of BRS and FRS for each time step
+fprintf('Computing safe set as intersection of BRS and FRS for all time steps...\n');
+
+% Get the number of time steps in the data
+if ndims(brs_value_function_full) == 4
+    num_time_steps = size(brs_value_function_full, 4);
+else
+    % Single time slice
+    num_time_steps = 1;
+end
+
+% Initialize safe set to hold all time steps
+if num_time_steps > 1
+    % 4D case (3D state space + time)
+    safe_set_value_function_full = zeros(size(brs_value_function_full));
+    
+    % Compute intersection for each time step
+    for t = 1:num_time_steps
+        % Extract time slice for each dataset
+        if ndims(brs_value_function_full) == 4
+            brs_t = brs_value_function_full(:,:,:,t);
+        else
+            brs_t = brs_value_function_full;
+        end
+        
+        if ndims(frs_value_function_full) == 4
+            frs_t = frs_value_function_full(:,:,:,t);
+        else
+            frs_t = frs_value_function_full;
+        end
+        
+        % Compute intersection (maximum of the value functions)
+        safe_set_value_function_full(:,:,:,t) = max(brs_t, frs_t);
+    end
+    
+    % Extract the final time slice for analysis
+    safe_set_value_function = safe_set_value_function_full(:,:,:,end);
+else
+    % Single time slice case
+    safe_set_value_function_full = max(brs_value_function_full, frs_value_function_full);
+    safe_set_value_function = safe_set_value_function_full;
+end
 
 %% Create results directory
 if opts.save_results
@@ -181,14 +229,15 @@ if opts.save_results
     % Save results
     fprintf('Saving safe set results...\n');
     save(fullfile(result_folder, 'safe_set_data.mat'), ...
-        'g', 'safe_set_value_function', 'brs_value_function', 'frs_value_function', ...
-        'velocity', 'control_limit', 'control_type', 'brs_tMax', 'frs_tMax', 'target_set');
+        'g', 'safe_set_value_function', 'safe_set_value_function_full', ...
+        'brs_value_function_full', 'frs_value_function_full', ...
+        'velocity', 'control_limit', 'control_type', 'tau', 'target_set');
 else
     result_folder = '';
 end
 
 %% Analyze the safe set
-% Calculate the area/volume of the safe set
+% Calculate the area/volume of the safe set at final time
 safe_region = (safe_set_value_function <= 0);
 grid_cell_size = prod(g.dx);  % Size of each grid cell
 safe_set_size = sum(safe_region(:)) * grid_cell_size;  % Total size of safe set
@@ -197,7 +246,7 @@ safe_set_size = sum(safe_region(:)) * grid_cell_size;  % Total size of safe set
 full_space_size = prod(g.max - g.min);
 safe_percentage = 100 * safe_set_size / full_space_size;
 
-fprintf('\nSafe Set Analysis:\n');
+fprintf('\nSafe Set Analysis (at final time):\n');
 if is_3d_model
     fprintf('  Volume of safe set: %.2f\n', safe_set_size);
 else
@@ -207,16 +256,17 @@ fprintf('  Percentage of state space that is safe: %.2f%%\n', safe_percentage);
 
 %% Visualize results if requested
 if opts.visualize
-    fprintf('Visualizing safe set...\n');
+    fprintf('Visualizing safe set with time slider...\n');
     
     if is_3d_model
-        % For 3D model, use the interactive visualization with time information and target set
-        visualize_interactive_safe_set(g, safe_set_value_function, brs_value_function, frs_value_function,... 
-                                      velocity, control_limit, control_type, brs_tMax, frs_tMax, target_set);
+        % For 3D model, use the interactive visualization with time slider
+        visualize_interactive_safe_set(g, safe_set_value_function_full, brs_value_function_full, ...
+            frs_value_function_full, tau, velocity, control_limit, control_type, target_set);
     else
-        % For 2D model, use the existing visualization
-        visualize_2d_safe_set(g, safe_set_value_function, brs_value_function, frs_value_function,... 
-                             velocity, control_limit, control_type, brs_tMax, frs_tMax, target_set);
+        % For 2D model, implement a similar visualization with time control for 2D
+        warning('Time slider visualization is currently only implemented for 3D models.');
+        visualize_2d_safe_set(g, safe_set_value_function, brs_value_function_full(:,:,end), ...
+            frs_value_function_full(:,:,end), velocity, control_limit, control_type, tau);
     end
     
     % Save figures if requested
@@ -235,8 +285,8 @@ if opts.save_results
 end
 end
 
-%% Helper function for 2D visualization
-function visualize_2d_safe_set(g, safe_set, brs, frs, velocity, control_limit, control_type, brs_tMax, frs_tMax, target_set)
+%% Helper function for 2D visualization 
+function visualize_2d_safe_set(g, safe_set, brs, frs, velocity, control_limit, control_type, tau)
     % Create a figure for visualization
     figure('Name', 'Safe Set Visualization (2D)', 'Position', [100, 100, 1200, 600]);
     
@@ -253,12 +303,6 @@ function visualize_2d_safe_set(g, safe_set, brs, frs, velocity, control_limit, c
     [~, h_frs] = contour(xs2_deg, xs1_deg, frs, [0 0], 'LineWidth', 2, 'Color', 'r');
     [~, h_safe] = contour(xs2_deg, xs1_deg, safe_set, [0 0], 'LineWidth', 3, 'Color', 'k');
     
-    % Plot target set if available
-    h_target = [];
-    if nargin >= 10 && ~isempty(target_set)
-        [~, h_target] = contour(xs2_deg, xs1_deg, target_set, [0 0], 'LineWidth', 2, 'Color', [0.8, 0.8, 0], 'LineStyle', '--');
-    end
-    
     % Shade the safe region
     safe_region = safe_set <= 0;
     [rows, cols] = find(safe_region);
@@ -273,34 +317,17 @@ function visualize_2d_safe_set(g, safe_set, brs, frs, velocity, control_limit, c
     ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
     
     % Create title with time information
-    if nargin >= 8 && ~isempty(brs_tMax) && ~isempty(frs_tMax)
-        if strcmp(control_type, 'dv')
-            title_str = sprintf('Safe Set (v = %d m/s, dvmax = %.1f°/s, BRS tMax = %.1f s, FRS tMax = %.1f s)', ...
-                    velocity, control_limit*180/pi, brs_tMax, frs_tMax);
-        else
-            title_str = sprintf('Safe Set (v = %d m/s, Mzmax = %d N·m, BRS tMax = %.1f s, FRS tMax = %.1f s)', ...
-                    velocity, control_limit, brs_tMax, frs_tMax);
-        end
+    if strcmp(control_type, 'dv')
+        title_str = sprintf('Safe Set (v = %d m/s, dvmax = %.1f°/s, t = %.2f s)', ...
+                velocity, control_limit*180/pi, tau(end));
     else
-        if strcmp(control_type, 'dv')
-            title_str = sprintf('Safe Set (v = %d m/s, dvmax = %.1f°/s)', ...
-                    velocity, control_limit*180/pi);
-        else
-            title_str = sprintf('Safe Set (v = %d m/s, Mzmax = %d N·m)', ...
-                    velocity, control_limit);
-        end
+        title_str = sprintf('Safe Set (v = %d m/s, Mzmax = %d N·m, t = %.2f s)', ...
+                velocity, control_limit, tau(end));
     end
     
     title(title_str, 'FontSize', 14, 'FontWeight', 'bold');
-    
-    % Set up legend with or without target
-    if ~isempty(h_target)
-        legend([h_brs, h_frs, h_safe, h_target], 'Backward Reachable Set', 'Forward Reachable Set', ...
-                'Safe Set', 'Target Set', 'Location', 'best');
-    else
-        legend([h_brs, h_frs, h_safe], 'Backward Reachable Set', 'Forward Reachable Set', ...
-                'Safe Set', 'Location', 'best');
-    end
+    legend([h_brs, h_frs, h_safe], 'Backward Reachable Set', 'Forward Reachable Set', ...
+            'Safe Set', 'Location', 'best');
     
     grid on;
     axis equal;
@@ -320,12 +347,6 @@ function visualize_2d_safe_set(g, safe_set, brs, frs, velocity, control_limit, c
     
     % Add the zero level contour
     [~, h_zero] = contour3(X, Y, safe_interp, [0 0], 'LineWidth', 3, 'Color', 'k');
-    
-    % Add target set contour if available
-    if nargin >= 10 && ~isempty(target_set)
-        target_interp = interp2(xs2_deg, xs1_deg, target_set, X, Y, 'cubic');
-        [~, h_target3d] = contour3(X, Y, target_interp, [0 0], 'LineWidth', 3, 'Color', [0.8, 0.8, 0], 'LineStyle', '--');
-    end
     
     % Add colorbar and labels
     colormap(jet);
