@@ -24,15 +24,20 @@ main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Re
 % Path to the reachability results folder
 brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250429_142622_vx30-30_dvmax20-20');
 
-% Optional: Path to FRS results folder (for safety constraints) - leave empty to disable
-frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250429_153753_vx20-20_dvmax60-60');  % Set to an actual folder path to enable FRS constraints
+% Optional: Path to FRS results folder - required for FRS trajectory visualization
+frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250501_103930_vx20-20_dvmax40-40');
+
+%% Trajectory type selection
+% Set to 'brs' for backward reachable trajectories (going to target)
+% Set to 'frs' for forward reachable trajectories (escaping from target)
+trajectory_type = 'brs';  % Choose 'brs' or 'frs'
 
 %% Visualization options
 visualize_reachable_sets = true;  % Set to true to visualize reachable sets
 visualize_trajectory = true;      % Set to true to visualize trajectory
 save_plots = false;               % Set to true to save visualization figures
 save_video = false;               % Set to true to save trajectory video
-video_file = 'trajectory.avi';    % Video filename for trajectory visualization
+video_file = 'trajectory1.avi';    % Video filename for trajectory visualization
 plot_types = {};  % Visualization types for reachable sets
 
 %% Trajectory computation options
@@ -42,7 +47,7 @@ trajectory_file = 'trajectory_data.mat';  % For loading/saving trajectory data
 % Initial state for trajectory computation
 % Format: [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
 % Example: 10 deg/s yaw rate, 5 deg sideslip, 3 deg steering
-xinit = [deg2rad(0); deg2rad(-5); deg2rad(0)];
+xinit = [deg2rad(0); deg2rad(15); deg2rad(0)];
 
 % Trajectory computation method - options: 'arrival', 'gradient', or 'legacy'
 % 'arrival'  - Uses time-of-arrival function for guidance (fastest)
@@ -51,10 +56,10 @@ xinit = [deg2rad(0); deg2rad(-5); deg2rad(0)];
 trajectory_method = 'gradient';  
 
 % Parameters for trajectory computation
-velocity_idx = 1;               % Index of velocity to use from BRS data
+velocity_idx = 1;               % Index of velocity to use from data
 control_idx = 1;                % Index of control limit to use (dv_max or Mz)
-max_time = 10.0;                 % Maximum trajectory time (seconds)
-use_frs_constraint = false;     % Use FRS for safety constraints
+max_time = 10.0;                % Maximum trajectory time (seconds)
+use_frs_constraint = false;     % Use FRS for safety constraints (for BRS trajectories only)
 frs_weight = 0.5;               % Weight for FRS constraints (0-1)
 
 %% Vehicle/car visualization parameters
@@ -70,57 +75,73 @@ grid_size = 20;                 % Size of the grid in the car view
 %% Parameter validation and setup
 fprintf('\n=== Reachability Visualization Tool ===\n');
 
+% Validate trajectory type
+if ~ismember(trajectory_type, {'brs', 'frs'})
+    error('Invalid trajectory_type. Must be either "brs" or "frs"');
+end
+
 % Validate paths
-if ~exist(brs_folder, 'dir')
+if strcmp(trajectory_type, 'brs') && ~exist(brs_folder, 'dir')
     error('BRS folder not found: %s', brs_folder);
 end
 
-combined_file = fullfile(brs_folder, 'brs_combined_results.mat');
+if strcmp(trajectory_type, 'frs') && ~exist(frs_folder, 'dir')
+    error('FRS folder not found: %s', frs_folder);
+end
+
+% Set the active folder based on trajectory type
+if strcmp(trajectory_type, 'brs')
+    active_folder = brs_folder;
+    combined_file = fullfile(active_folder, 'brs_combined_results.mat');
+else
+    active_folder = frs_folder;
+    combined_file = fullfile(active_folder, 'frs_combined_results.mat');
+    
+    % Try alternate filename if the main one doesn't exist
+    if ~exist(combined_file, 'file')
+        combined_file = fullfile(active_folder, 'brs_combined_results.mat');
+    end
+end
+
 if ~exist(combined_file, 'file')
     error('Combined results file not found: %s', combined_file);
 end
 
-% Validate FRS folder if provided
-if ~isempty(frs_folder) && ~exist(frs_folder, 'dir')
+% Validate FRS folder if provided (for BRS trajectory with FRS constraints)
+if strcmp(trajectory_type, 'brs') && use_frs_constraint && (~isempty(frs_folder) && ~exist(frs_folder, 'dir'))
     warning('FRS folder not found: %s. FRS constraints will be disabled.', frs_folder);
     frs_folder = '';
     use_frs_constraint = false;
 end
 
-% Enable FRS constraints if FRS folder is provided
-if ~isempty(frs_folder)
-    use_frs_constraint = true;
-    fprintf('FRS constraints enabled using data from: %s\n', frs_folder);
-end
+%% Load data
+fprintf('Loading %s data from: %s\n', upper(trajectory_type), active_folder);
+active_data = load(combined_file);
 
-%% Load BRS data
-fprintf('Loading BRS data from: %s\n', brs_folder);
-brs_data = load(combined_file);
-
-% Extract key information from BRS data
-g = brs_data.g;
-data0 = brs_data.data0;  % Target set
-velocities = brs_data.velocities;
-tau = brs_data.tau;  % Time vector
-base_params = brs_data.base_params;
+% Extract key information
+g = active_data.g;
+data0 = active_data.data0;  % Target set
+velocities = active_data.velocities;
+tau = active_data.tau;  % Time vector
+base_params = active_data.base_params;
 
 % Determine model type (steering or yaw moment)
 is_steered_model = length(g.N) == 3;  % 3D grid indicates steered model
 if is_steered_model
     fprintf('Detected 3D steered bicycle model\n');
-    if isfield(brs_data, 'dvmax_values')
-        control_limits = brs_data.dvmax_values;
+    if isfield(active_data, 'dvmax_values')
+        control_limits = active_data.dvmax_values;
         control_type = 'dv';
     else
-        error('Could not find dvmax_values in BRS data for steered model');
+        error('Could not find dvmax_values in data for steered model');
     end
 else
     fprintf('Detected 2D standard bicycle model with yaw moment control\n');
-    if isfield(brs_data, 'mzmax_values')
-        control_limits = brs_data.mzmax_values;
+    if isfield(active_data, 'mzmax_values')
+        control_limits = active_data.mzmax_values;
         control_type = 'mz';
     else
-        error('Could not find mzmax_values in BRS data for standard model');
+        error('Could not find mzmax_values in data for standard model');
     end
 end
 
@@ -135,52 +156,83 @@ if control_idx > length(control_limits)
     control_idx = 1;
 end
 
-% Extract BRS data for selected velocity and control limit
-data_brs = brs_data.all_data{velocity_idx, control_idx};
+% Extract reachable set data for selected velocity and control limit
+data_value_function = active_data.all_data{velocity_idx, control_idx};
 
 % Extract full time data if available
-if isfield(brs_data, 'all_data_full')
-    data_brs_full = brs_data.all_data_full{velocity_idx, control_idx};
+if isfield(active_data, 'all_data_full')
+    data_value_function_full = active_data.all_data_full{velocity_idx, control_idx};
 else
-    warning('Full-time BRS data not available. Some optimized methods may not work correctly.');
-    data_brs_full = data_brs;  % Use single time slice as fallback
+    warning('Full-time data not available. Some optimized methods may not work correctly.');
+    data_value_function_full = data_value_function;  % Use single time slice as fallback
 end
 
-% Load FRS data if enabled
-data_frs = [];
-if use_frs_constraint
+% Load complementary data (FRS for BRS trajectory, BRS for FRS trajectory)
+data_complement = [];
+if strcmp(trajectory_type, 'brs') && use_frs_constraint && ~isempty(frs_folder)
+    % Load FRS data for BRS trajectory with constraints
     frs_combined_file = fullfile(frs_folder, 'frs_combined_results.mat');
     if ~exist(frs_combined_file, 'file')
         % Try alternate filename
         frs_combined_file = fullfile(frs_folder, 'brs_combined_results.mat');
-        if ~exist(frs_combined_file, 'file')
-            warning('FRS results file not found. FRS constraints will be disabled.');
-            use_frs_constraint = false;
-        else
-            fprintf('Loading FRS data from: %s\n', frs_combined_file);
-            frs_data = load(frs_combined_file);
-            
-            % Find matching velocity and control limit in FRS data
-            v_idx = find(frs_data.velocities == velocities(velocity_idx), 1);
-            if isempty(v_idx)
-                % Find closest
-                [~, v_idx] = min(abs(frs_data.velocities - velocities(velocity_idx)));
-            end
-            
-            if strcmp(control_type, 'dv')
-                c_idx = find(frs_data.dvmax_values == control_limits(control_idx), 1);
-                if isempty(c_idx)
-                    [~, c_idx] = min(abs(frs_data.dvmax_values - control_limits(control_idx)));
-                end
-            else
-                c_idx = find(frs_data.mzmax_values == control_limits(control_idx), 1);
-                if isempty(c_idx)
-                    [~, c_idx] = min(abs(frs_data.mzmax_values - control_limits(control_idx)));
-                end
-            end
-            
-            data_frs = frs_data.all_data{v_idx, c_idx};
+    end
+    
+    if exist(frs_combined_file, 'file')
+        fprintf('Loading FRS data for safety constraints from: %s\n', frs_combined_file);
+        frs_data = load(frs_combined_file);
+        
+        % Find matching velocity and control limit in FRS data
+        v_idx = find(frs_data.velocities == velocities(velocity_idx), 1);
+        if isempty(v_idx)
+            % Find closest
+            [~, v_idx] = min(abs(frs_data.velocities - velocities(velocity_idx)));
         end
+        
+        if strcmp(control_type, 'dv')
+            c_idx = find(frs_data.dvmax_values == control_limits(control_idx), 1);
+            if isempty(c_idx)
+                [~, c_idx] = min(abs(frs_data.dvmax_values - control_limits(control_idx)));
+            end
+        else
+            c_idx = find(frs_data.mzmax_values == control_limits(control_idx), 1);
+            if isempty(c_idx)
+                [~, c_idx] = min(abs(frs_data.mzmax_values - control_limits(control_idx)));
+            end
+        end
+        
+        data_complement = frs_data.all_data{v_idx, c_idx};
+    else
+        warning('FRS results file not found. FRS constraints will be disabled.');
+        use_frs_constraint = false;
+    end
+elseif strcmp(trajectory_type, 'frs') && ~isempty(brs_folder)
+    % For FRS trajectories, we may want to use the BRS data for visualization purposes
+    % This is optional but helps with comparing the two types of trajectories
+    brs_combined_file = fullfile(brs_folder, 'brs_combined_results.mat');
+    
+    if exist(brs_combined_file, 'file')
+        fprintf('Loading BRS data for comparison from: %s\n', brs_combined_file);
+        brs_data = load(brs_combined_file);
+        
+        % Find matching velocity and control limit
+        v_idx = find(brs_data.velocities == velocities(velocity_idx), 1);
+        if isempty(v_idx)
+            [~, v_idx] = min(abs(brs_data.velocities - velocities(velocity_idx)));
+        end
+        
+        if strcmp(control_type, 'dv')
+            c_idx = find(brs_data.dvmax_values == control_limits(control_idx), 1);
+            if isempty(c_idx)
+                [~, c_idx] = min(abs(brs_data.dvmax_values - control_limits(control_idx)));
+            end
+        else
+            c_idx = find(brs_data.mzmax_values == control_limits(control_idx), 1);
+            if isempty(c_idx)
+                [~, c_idx] = min(abs(brs_data.mzmax_values - control_limits(control_idx)));
+            end
+        end
+        
+        data_complement = brs_data.all_data{v_idx, c_idx};
     end
 end
 
@@ -189,10 +241,10 @@ end
 has_arrival_time = false;
 arrival_time = [];
 
-if exist('compute_arrival_time', 'file') && ~isempty(data_brs_full) && strcmp(trajectory_method, 'arrival')
+if exist('compute_arrival_time', 'file') && ~isempty(data_value_function_full) && strcmp(trajectory_method, 'arrival')
     fprintf('Computing time-of-arrival function for improved trajectory planning...\n');
     try
-        arrival_time = compute_arrival_time(data_brs_full, tau);
+        arrival_time = compute_arrival_time(data_value_function_full, tau);
         has_arrival_time = true;
         fprintf('Time-of-arrival function computation successful.\n');
     catch err
@@ -223,7 +275,7 @@ if visualize_reachable_sets
     try
         % Check if unified visualization function exists
         if exist('visualize_reachability_results', 'file')
-            visualize_reachability_results(brs_folder, viz_options);
+            visualize_reachability_results(active_folder, viz_options);
         else
             warning('visualize_reachability_results function not found. Skipping reachable set visualization.');
         end
@@ -276,6 +328,32 @@ if visualize_trajectory
         end
     end
     
+    % If this is an FRS trajectory, validate that initial state is in/near target set
+    if strcmp(trajectory_type, 'frs')
+        % Check if initial state is in target set (for FRS trajectories)
+        target_value = eval_u(g, data0, xinit);
+        if target_value > 0
+            warning('For FRS trajectories, initial state should be in the target set.');
+            fprintf('Current initial state has target set value: %.4f\n', target_value);
+            
+            % If not in target, try to find a close point (optional, commented out)
+            % [closest_idx, min_value] = find_closest_to_target(g, data0, xinit);
+            % if min_value <= 0
+            %    xinit = get_state_from_index(g, closest_idx);
+            %    fprintf('Adjusted initial state to be in target set.\n');
+            % end
+        end
+    end
+    
+    % Set control mode based on trajectory type
+    if strcmp(trajectory_type, 'brs')
+        uMode = 'min';  % For BRS trajectories
+        fprintf('Computing BRS trajectory (control minimizes value function to reach target)\n');
+    else % 'frs'
+        uMode = 'max';  % For FRS trajectories
+        fprintf('Computing FRS trajectory (control maximizes value function to escape target)\n');
+    end
+    
     % Compute or load trajectory
     if compute_new_trajectory
         fprintf('Computing trajectory for initial state: ');
@@ -287,26 +365,49 @@ if visualize_trajectory
                 xinit(1)*180/pi, xinit(2)*180/pi);
         end
         
-        % Check if initial state is in BRS
-        initial_value = eval_u(g, data_brs, xinit);
-        if initial_value > 0
-            error('Initial state is not in the BRS (value = %.4f). Try a different initial state.', initial_value);
+        % Check if initial state is valid for the selected trajectory type
+        if strcmp(trajectory_type, 'brs')
+            % For BRS trajectory, check if initial state is in BRS
+            initial_value = eval_u(g, data_value_function, xinit);
+            if initial_value > 0
+                error('Initial state is not in the BRS (value = %.4f). Try a different initial state.', initial_value);
+            end
+        else % 'frs'
+            % For FRS trajectory, no strict requirement, but ideally close to target
+            initial_value = eval_u(g, data_value_function, xinit);
+            if initial_value > 0
+                warning('Initial state is not in the FRS (value = %.4f). Results may be unexpected.', initial_value);
+            end
         end
         
         % Select trajectory computation method
         if strcmp(trajectory_method, 'legacy')
             % Use legacy computation methods
+            % Note: Legacy methods may not fully support FRS trajectories
+            if strcmp(trajectory_type, 'frs')
+                warning('Legacy methods may not fully support FRS trajectories. Consider using optimized methods.');
+            end
+            
             if is_steered_model
                 fprintf('Using legacy steered trajectory computation method...\n');
                 try
-                    [traj, traj_tau, traj_u, metrics] = compute_trajectory_steered_from_folders(brs_folder, xinit, ...
-                        'velocityIdx', velocity_idx, ...
-                        'dvMaxIdx', control_idx, ...
-                        'visualize', false, ...
-                        'maxTime', max_time, ...
-                        'useFRS', use_frs_constraint, ...
-                        'frs_folder', frs_folder, ...
-                        'frsWeight', frs_weight);
+                    % Modify for FRS trajectories if necessary
+                    legacy_opts = struct();
+                    legacy_opts.velocityIdx = velocity_idx;
+                    legacy_opts.dvMaxIdx = control_idx;
+                    legacy_opts.visualize = false;
+                    legacy_opts.maxTime = max_time;
+                    legacy_opts.uMode = uMode;  % Set control mode based on trajectory type
+                    
+                    if strcmp(trajectory_type, 'brs') && use_frs_constraint
+                        legacy_opts.useFRS = true;
+                        legacy_opts.frs_folder = frs_folder;
+                        legacy_opts.frsWeight = frs_weight;
+                    else
+                        legacy_opts.useFRS = false;
+                    end
+                    
+                    [traj, traj_tau, traj_u, metrics] = compute_trajectory_steered_from_folders(active_folder, xinit, legacy_opts);
                 catch err
                     error('Error in legacy trajectory computation: %s', err.message);
                 end
@@ -314,14 +415,22 @@ if visualize_trajectory
                 fprintf('Using legacy standard trajectory computation method...\n');
                 try
                     % Assuming a function similar to compute_trajectory_from_folders for standard model
-                    [traj, traj_tau, traj_u, metrics] = compute_trajectory_from_folders(brs_folder, xinit, ...
-                        'velocityIdx', velocity_idx, ...
-                        'mzMaxIdx', control_idx, ...
-                        'visualize', false, ...
-                        'maxTime', max_time, ...
-                        'useFRS', use_frs_constraint, ...
-                        'frs_folder', frs_folder, ...
-                        'frsWeight', frs_weight);
+                    legacy_opts = struct();
+                    legacy_opts.velocityIdx = velocity_idx;
+                    legacy_opts.mzMaxIdx = control_idx;
+                    legacy_opts.visualize = false;
+                    legacy_opts.maxTime = max_time;
+                    legacy_opts.uMode = uMode;  % Set control mode based on trajectory type
+                    
+                    if strcmp(trajectory_type, 'brs') && use_frs_constraint
+                        legacy_opts.useFRS = true;
+                        legacy_opts.frs_folder = frs_folder;
+                        legacy_opts.frsWeight = frs_weight;
+                    else
+                        legacy_opts.useFRS = false;
+                    end
+                    
+                    [traj, traj_tau, traj_u, metrics] = compute_trajectory_from_folders(active_folder, xinit, legacy_opts);
                 catch err
                     error('Error in legacy trajectory computation: %s', err.message);
                 end
@@ -338,41 +447,48 @@ if visualize_trajectory
             % Setup options for optimized computation
             opt_options = struct();
             opt_options.method = trajectory_method;
-            opt_options.uMode = 'min';  % For target reaching
+            opt_options.uMode = uMode;  % Set based on trajectory type (min for BRS, max for FRS)
             opt_options.maxTime = max_time;
-            opt_options.dt = tau(2) - tau(1);  % Use same time step as BRS computation
+            opt_options.dt = (tau(2) - tau(1))/20;  % Use smaller time step for better integration
             opt_options.visualize = false;
-            opt_options.finalSet = data0;  % Use target set from BRS
+            opt_options.finalSet = data0;  % Use target set from data
             
             % Add arrival time if available
             if has_arrival_time
                 opt_options.arrivalTime = arrival_time;
             end
             
-            % Add FRS constraints if enabled
-            if use_frs_constraint && ~isempty(data_frs)
+            % Add FRS constraints if enabled for BRS trajectory
+            if strcmp(trajectory_type, 'brs') && use_frs_constraint && ~isempty(data_complement)
                 opt_options.useFRS = true;
-                opt_options.data_frs = data_frs;
+                opt_options.data_frs = data_complement;
                 opt_options.frsWeight = frs_weight;
+            end
+            
+            % Handle time direction differently for FRS trajectories
+            if strcmp(trajectory_type, 'frs')
+                % For FRS, we may need to handle time differently
+                % (may depend on specific implementation)
+                opt_options.reverseFRS = true;  % Flag indicating this is an FRS trajectory
             end
             
             try
                 % Compute trajectory using optimized method
-                [traj, traj_tau, traj_u, metrics] = computeOptimizedTrajectory(g, data_brs_full, tau, xinit, dynSys, opt_options);
+                [traj, traj_tau, traj_u, metrics] = computeOptimizedTrajectory(g, data_value_function_full, tau, xinit, dynSys, opt_options);
             catch err
                 error('Error in optimized trajectory computation: %s', err.message);
             end
         end
         
         % Save computed trajectory
-        save(trajectory_file, 'traj', 'traj_tau', 'traj_u', 'metrics', 'xinit', 'brs_folder', ...
-            'trajectory_method', 'params', 'velocity_idx', 'control_idx');
+        save(trajectory_file, 'traj', 'traj_tau', 'traj_u', 'metrics', 'xinit', 'active_folder', ...
+            'trajectory_method', 'trajectory_type', 'params', 'velocity_idx', 'control_idx');
         fprintf('Trajectory computed and saved to %s\n', trajectory_file);
     else
         % Load a previously computed trajectory
         if exist(trajectory_file, 'file')
             fprintf('Loading trajectory from %s\n', trajectory_file);
-            load(trajectory_file, 'traj', 'traj_tau', 'traj_u', 'metrics', 'xinit');
+            load(trajectory_file, 'traj', 'traj_tau', 'traj_u', 'metrics', 'xinit', 'trajectory_type');
             
             % Check if trajectory file contains the required data
             if ~exist('traj', 'var') || ~exist('traj_tau', 'var')
@@ -384,18 +500,31 @@ if visualize_trajectory
     end
     
     %% Display trajectory metrics
-    fprintf('\n=== Trajectory Metrics ===\n');
+    fprintf('\n=== %s Trajectory Metrics ===\n', upper(trajectory_type));
     fprintf('Computation Method: %s\n', trajectory_method);
     
     if isfield(metrics, 'time_to_target')
-        fprintf('Time to target: %.2f seconds\n', metrics.time_to_target);
+        if strcmp(trajectory_type, 'brs')
+            fprintf('Time to target: %.2f seconds\n', metrics.time_to_target);
+        else % FRS
+            fprintf('Escape time: %.2f seconds\n', metrics.time_to_target);
+        end
     end
     
     if isfield(metrics, 'final_set_value')
-        if metrics.final_set_value <= 0
-            fprintf('Target reached! (final value: %.4f)\n', metrics.final_set_value);
-        else
-            fprintf('Target NOT reached (final value: %.4f)\n', metrics.final_set_value);
+        if strcmp(trajectory_type, 'brs')
+            if metrics.final_set_value <= 0
+                fprintf('Target reached! (final value: %.4f)\n', metrics.final_set_value);
+            else
+                fprintf('Target NOT reached (final value: %.4f)\n', metrics.final_set_value);
+            end
+        else % FRS
+            fprintf('Final value: %.4f\n', metrics.final_set_value);
+            if metrics.final_set_value <= 0
+                fprintf('Warning: FRS trajectory ended inside target set\n');
+            else
+                fprintf('Successfully escaped target set\n');
+            end
         end
     end
     
@@ -412,11 +541,12 @@ if visualize_trajectory
     end
     
     %% Visualize trajectory
-    fprintf('\nVisualizing trajectory...\n');
+    fprintf('\nVisualizing %s trajectory...\n', upper(trajectory_type));
     
     try
         % First visualize in state space
-        figure('Name', 'Trajectory in State Space');
+        figure_title = sprintf('%s Trajectory in State Space', upper(trajectory_type));
+        figure('Name', figure_title);
         
         if is_steered_model
             % For 3D model, show slices at the steering angle
@@ -427,7 +557,7 @@ if visualize_trajectory
             [~, delta_idx] = min(abs(delta_values - xinit(3)));
             
             % Extract 2D slices
-            data_slice = squeeze(data_brs(:,:,delta_idx));
+            data_slice = squeeze(data_value_function(:,:,delta_idx));
             target_slice = squeeze(data0(:,:,center_idx));
             
             % Plot the slice
@@ -438,18 +568,48 @@ if visualize_trajectory
             [~, h1] = contour(xs2_deg, xs1_deg, data_slice, [0, 0], 'LineWidth', 2, 'Color', 'k');
             [~, h2] = contour(xs2_deg, xs1_deg, target_slice, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
             
+            % Also plot BRS data if this is an FRS trajectory and we have BRS data
+            if strcmp(trajectory_type, 'frs') && ~isempty(data_complement)
+                brs_slice = squeeze(data_complement(:,:,delta_idx));
+                [~, h_brs] = contour(xs2_deg, xs1_deg, brs_slice, [0, 0], 'LineWidth', 2, 'Color', 'b', 'LineStyle', ':');
+            end
+            
             % Convert trajectory to degrees for plotting
             traj_deg = traj * 180/pi;
             
             % Plot trajectory in state space (sideslip vs yaw rate)
             h3 = plot(traj_deg(2,:), traj_deg(1,:), 'b-', 'LineWidth', 2);
             h4 = plot(traj_deg(2,1), traj_deg(1,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
-            h5 = plot(traj_deg(2,end), traj_deg(1,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
+            
+            % For BRS trajectories, final point is "target reached"
+            % For FRS trajectories, final point is "escaped from target"
+            if strcmp(trajectory_type, 'brs')
+                h5 = plot(traj_deg(2,end), traj_deg(1,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
+            else
+                h5 = plot(traj_deg(2,end), traj_deg(1,end), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+            end
             
             xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
             ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
-            title(sprintf('Trajectory in State Space (δ = %.1f°)', delta_values(delta_idx)*180/pi), 'FontSize', 14);
-            legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State', 'Location', 'best');
+            
+            if strcmp(trajectory_type, 'brs')
+                main_set_name = 'BRS';
+                title(sprintf('BRS Trajectory in State Space (δ = %.1f°)', delta_values(delta_idx)*180/pi), 'FontSize', 14);
+                if ~isempty(data_complement)
+                    legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+                else
+                    legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+                end
+            else % FRS
+                main_set_name = 'FRS';
+                title(sprintf('FRS Trajectory in State Space (δ = %.1f°)', delta_values(delta_idx)*180/pi), 'FontSize', 14);
+                if ~isempty(data_complement)
+                    legend([h1, h2, h_brs, h3, h4, h5], 'FRS Boundary', 'Target Set', 'BRS Boundary', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+                else
+                    legend([h1, h2, h3, h4, h5], 'FRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+                end
+            end
+            
             grid on;
             
             % Also create a figure showing the steering angle over time
@@ -457,14 +617,19 @@ if visualize_trajectory
             plot(traj_tau, traj_deg(3,:), 'r-', 'LineWidth', 2);
             xlabel('Time (s)', 'FontSize', 12);
             ylabel('Steering Angle (degrees)', 'FontSize', 12);
-            title('Steering Angle vs Time', 'FontSize', 14);
+            title(sprintf('%s Trajectory: Steering Angle vs Time', main_set_name), 'FontSize', 14);
             grid on;
             
         else
             % For 2D model
             hold on;
-            [~, h1] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_brs, [0, 0], 'LineWidth', 2, 'Color', 'k');
+            [~, h1] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_value_function, [0, 0], 'LineWidth', 2, 'Color', 'k');
             [~, h2] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data0, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+            
+            % Also plot BRS data if this is an FRS trajectory and we have BRS data
+            if strcmp(trajectory_type, 'frs') && ~isempty(data_complement)
+                [~, h_brs] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_complement, [0, 0], 'LineWidth', 2, 'Color', 'b', 'LineStyle', ':');
+            end
             
             % Convert trajectory to degrees for plotting
             traj_deg = traj * 180/pi;
@@ -472,12 +637,36 @@ if visualize_trajectory
             % Plot trajectory
             h3 = plot(traj_deg(2,:), traj_deg(1,:), 'b-', 'LineWidth', 2);
             h4 = plot(traj_deg(2,1), traj_deg(1,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
-            h5 = plot(traj_deg(2,end), traj_deg(1,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
+            
+            % For BRS trajectories, final point is "target reached"
+            % For FRS trajectories, final point is "escaped from target"
+            if strcmp(trajectory_type, 'brs')
+                h5 = plot(traj_deg(2,end), traj_deg(1,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
+            else
+                h5 = plot(traj_deg(2,end), traj_deg(1,end), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+            end
             
             xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
             ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
-            title('Trajectory in State Space', 'FontSize', 14);
-            legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State', 'Location', 'best');
+            
+            if strcmp(trajectory_type, 'brs')
+                main_set_name = 'BRS';
+                title('BRS Trajectory in State Space', 'FontSize', 14);
+                if ~isempty(data_complement)
+                    legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+                else
+                    legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+                end
+            else % FRS
+                main_set_name = 'FRS';
+                title('FRS Trajectory in State Space', 'FontSize', 14);
+                if ~isempty(data_complement)
+                    legend([h1, h2, h_brs, h3, h4, h5], 'FRS Boundary', 'Target Set', 'BRS Boundary', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+                else
+                    legend([h1, h2, h3, h4, h5], 'FRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+                end
+            end
+            
             grid on;
         end
         
@@ -488,10 +677,10 @@ if visualize_trajectory
         
         if is_steered_model
             ylabel('Steering Rate (rad/s)', 'FontSize', 12);
-            title('Steering Rate Control Input', 'FontSize', 14);
+            title(sprintf('%s Trajectory: Steering Rate Control Input', main_set_name), 'FontSize', 14);
         else
             ylabel('Yaw Moment (N·m)', 'FontSize', 12);
-            title('Yaw Moment Control Input', 'FontSize', 14);
+            title(sprintf('%s Trajectory: Yaw Moment Control Input', main_set_name), 'FontSize', 14);
         end
         grid on;
         
@@ -503,7 +692,16 @@ if visualize_trajectory
             vx = velocities(velocity_idx);
             
             try
-                visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, ...
+                % Choose border color based on trajectory type
+                if strcmp(trajectory_type, 'brs')
+                    % Use blue scheme for BRS
+                    border_color = [0, 0, 0.8];  % Dark blue
+                else
+                    % Use red scheme for FRS
+                    border_color = [0.8, 0, 0];  % Dark red
+                end
+                
+                visualizeCarTrajectory(traj, traj_tau, g, data_value_function, data0, vx, ...
                     'x0', 0, 'y0', 0, 'psi0', 0, ...
                     'saveVideo', save_video, ...
                     'videoFile', video_file, ...
@@ -511,7 +709,8 @@ if visualize_trajectory
                     'carWidth', car_width, ...
                     'wheelBase', wheel_base, ...
                     'gridSize', grid_size, ...
-                    'playSpeed', 1.0);
+                    'playSpeed', 1.0, ...
+                    'isBRS', strcmp(trajectory_type, 'brs')); % Add flag indicating if BRS or FRS
                 
                 if save_video
                     fprintf('Car trajectory visualization saved to: %s\n', video_file);
@@ -523,14 +722,15 @@ if visualize_trajectory
                 if save_video && (contains(err.message, 'VideoWriter') || contains(err.message, 'video'))
                     fprintf('Attempting visualization without video recording...\n');
                     try
-                        visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, ...
+                        visualizeCarTrajectory(traj, traj_tau, g, data_value_function, data0, vx, ...
                             'x0', 0, 'y0', 0, 'psi0', 0, ...
                             'saveVideo', false, ...
                             'carLength', car_length, ...
                             'carWidth', car_width, ...
                             'wheelBase', wheel_base, ...
                             'gridSize', grid_size, ...
-                            'playSpeed', 1.0);
+                            'playSpeed', 1.0, ...
+                            'isBRS', strcmp(trajectory_type, 'brs')); % Add flag indicating if BRS or FRS
                         fprintf('Car trajectory visualization completed without video recording.\n');
                     catch inner_err
                         warning('Visualization failed: %s', inner_err.message);

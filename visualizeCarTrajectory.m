@@ -1,8 +1,9 @@
+% Add a new parameter to the function signature to indicate trajectory type
 function visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, varargin)
 % VISUALIZECARTRAJECTORY Creates dual-view visualization of car trajectory
 %
 % This function creates a synchronized visualization with two views:
-% 1. 3D state-space view (right): Shows trajectory in state space with BRS and target set
+% 1. 3D state-space view (right): Shows trajectory in state space with BRS/FRS and target set
 % 2. Top-down car-centric view (left): Shows car fixed at center with the world moving underneath
 %
 % Inputs:
@@ -12,7 +13,7 @@ function visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, varargin
 %                 delta: steering angle (rad)
 %   traj_tau    - Time points corresponding to trajectory
 %   g           - Grid structure for state space
-%   data_brs    - Backward reachable set data (value function from BRS computation)
+%   data_brs    - Value function data (BRS or FRS) for visualization
 %   data0       - Target set data (value function)
 %   vx          - Constant longitudinal velocity (m/s)
 %   varargin    - Optional parameter-value pairs:
@@ -31,6 +32,8 @@ function visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, varargin
 %                 'isoValue'     - Value for isosurface (default: 0)
 %                 'brsOpacity'   - Opacity for BRS isosurface (default: 0.3)
 %                 'targetOpacity'- Opacity for target isosurface (default: 0.5)
+%                 'isBRS'        - Whether this is a BRS trajectory (default: true)
+%                                  If false, treats as FRS trajectory with different colors
 
 %% Parse inputs
 p = inputParser;
@@ -55,6 +58,7 @@ p.addParameter('gridSize', 20, @isnumeric);
 p.addParameter('isoValue', 0, @isnumeric);
 p.addParameter('brsOpacity', 0.3, @(x) isnumeric(x) && x >= 0 && x <= 1);
 p.addParameter('targetOpacity', 0.5, @(x) isnumeric(x) && x >= 0 && x <= 1);
+p.addParameter('isBRS', true, @islogical);  % New parameter to indicate trajectory type
 
 p.parse(traj, traj_tau, g, data_brs, data0, vx, varargin{:});
 opts = p.Results;
@@ -62,8 +66,31 @@ opts = p.Results;
 % Check if we have a 3D BRS (needed for 3D visualization)
 is_3d_brs = ndims(data_brs) == 3;
 if ~is_3d_brs
-    warning('BRS data is not 3D. The right panel will show a 2D view instead of 3D.');
+    warning('BRS/FRS data is not 3D. The right panel will show a 2D view instead of 3D.');
 end
+
+%% Setup visual styling based on trajectory type (BRS or FRS)
+% Set appropriate colors and titles based on trajectory type
+if opts.isBRS
+    % BRS trajectory styling (blue scheme)
+    traj_color = [0, 0, 0.8];  % Dark blue for trajectory
+    start_color = [0, 0, 0.8];  % Dark blue for start point
+    end_color = [0, 0.6, 0]; % Green for end point (target reached)
+    main_title = sprintf('BRS Trajectory Visualization (v_x = %.1f m/s)', vx);
+    brs_surface_color = [0, 0, 0.7]; % Blue for BRS surface
+    final_text = 'Target Reached';
+else
+    % FRS trajectory styling (red scheme)
+    traj_color = [0.8, 0, 0];  % Dark red for trajectory
+    start_color = [0, 0.6, 0]; % Green for start point (in target)
+    end_color = [0.8, 0, 0];   % Red for end point (escaped)
+    main_title = sprintf('FRS Trajectory Visualization (v_x = %.1f m/s)', vx);
+    brs_surface_color = [0.7, 0, 0]; % Red for FRS surface
+    final_text = 'Target Escaped';
+end
+
+% Target set is always green
+target_color = [0, 0.7, 0];  % Green for target set
 
 %% Setup video recording if needed
 try_video = opts.saveVideo;
@@ -138,7 +165,7 @@ try
         [brs_faces, brs_verts] = isosurface(beta_grid, gamma_grid, delta_grid, data_brs, opts.isoValue);
         if ~isempty(brs_faces)
             h_brs = patch('Faces', brs_faces, 'Vertices', brs_verts, ...
-                         'FaceColor', 'red', 'EdgeColor', 'none', 'FaceAlpha', opts.brsOpacity);
+                         'FaceColor', brs_surface_color, 'EdgeColor', 'none', 'FaceAlpha', opts.brsOpacity);
         else
             h_brs = [];
             warning('BRS isosurface is empty. Will not display BRS boundary.');
@@ -148,7 +175,7 @@ try
         [target_faces, target_verts] = isosurface(beta_grid, gamma_grid, delta_grid, data0, opts.isoValue);
         if ~isempty(target_faces)
             h_target = patch('Faces', target_faces, 'Vertices', target_verts, ...
-                           'FaceColor', 'green', 'EdgeColor', 'none', 'FaceAlpha', opts.targetOpacity);
+                           'FaceColor', target_color, 'EdgeColor', 'none', 'FaceAlpha', opts.targetOpacity);
         else
             h_target = [];
             warning('Target isosurface is empty. Will not display target set.');
@@ -156,13 +183,13 @@ try
         
         % Plot the 3D trajectory
         h_traj = plot3(traj(2,:) * 180/pi, traj(1,:) * 180/pi, traj(3,:) * 180/pi, ...
-            'b-', 'LineWidth', 2);
+            '-', 'LineWidth', 2, 'Color', traj_color);
         
-        % Mark start and end points
+        % Mark start and end points with different colors based on trajectory type
         h_start = plot3(traj(2,1) * 180/pi, traj(1,1) * 180/pi, traj(3,1) * 180/pi, ...
-            'bo', 'MarkerSize', 10, 'MarkerFaceColor', 'b');
+            'o', 'MarkerSize', 10, 'MarkerFaceColor', start_color, 'Color', start_color);
         h_end = plot3(traj(2,end) * 180/pi, traj(1,end) * 180/pi, traj(3,end) * 180/pi, ...
-            'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
+            'o', 'MarkerSize', 10, 'MarkerFaceColor', end_color, 'Color', end_color);
         
         % Current position marker (will be updated during animation)
         h_current = plot3(traj(2,1) * 180/pi, traj(1,1) * 180/pi, traj(3,1) * 180/pi, ...
@@ -172,7 +199,13 @@ try
         xlabel('Sideslip Angle \beta (deg)', 'FontSize', 12);
         ylabel('Yaw Rate \gamma (deg/s)', 'FontSize', 12);
         zlabel('Steering Angle \delta (deg)', 'FontSize', 12);
-        title('3D State Space View', 'FontSize', 14);
+        
+        % Use different title based on trajectory type
+        if opts.isBRS
+            title('3D State Space View (BRS)', 'FontSize', 14);
+        else
+            title('3D State Space View (FRS)', 'FontSize', 14);
+        end
         
         % Set up lighting and view angle for better 3D visualization
         lighting gouraud;
@@ -187,7 +220,11 @@ try
         
         if ~isempty(h_brs) && ishandle(h_brs) && isvalid(h_brs)
             legend_handles = [legend_handles, h_brs];
-            legend_labels{end+1} = 'BRS Boundary';
+            if opts.isBRS
+                legend_labels{end+1} = 'BRS Boundary';
+            else
+                legend_labels{end+1} = 'FRS Boundary';
+            end
         end
         
         if ~isempty(h_target) && ishandle(h_target) && isvalid(h_target)
@@ -207,7 +244,11 @@ try
         
         if ~isempty(h_end) && ishandle(h_end)
             legend_handles = [legend_handles, h_end];
-            legend_labels{end+1} = 'End';
+            if opts.isBRS
+                legend_labels{end+1} = 'End (Target Reached)';
+            else
+                legend_labels{end+1} = 'End (Target Escaped)';
+            end
         end
         
         if ~isempty(h_current) && ishandle(h_current)
@@ -227,18 +268,22 @@ try
     else
         % Fallback to 2D visualization if BRS is only 2D
         % Plot BRS boundary
-        [C_brs, h_brs] = contour(g.xs{2}, g.xs{1}, data_brs, [0 0], 'r-', 'LineWidth', 2);
+        if opts.isBRS
+            [C_brs, h_brs] = contour(g.xs{2}, g.xs{1}, data_brs, [0 0], 'b-', 'LineWidth', 2);
+        else
+            [C_brs, h_brs] = contour(g.xs{2}, g.xs{1}, data_brs, [0 0], 'r-', 'LineWidth', 2);
+        end
         hold on;
 
         % Plot target set
         [C_target, h_target] = contour(g.xs{2}, g.xs{1}, data0, [0 0], 'g-', 'LineWidth', 2);
 
-        % Plot full trajectory
-        h_traj = plot(traj(2,:) * 180/pi, traj(1,:) * 180/pi, 'b-', 'LineWidth', 1.5);
+        % Plot full trajectory with color based on trajectory type
+        h_traj = plot(traj(2,:) * 180/pi, traj(1,:) * 180/pi, '-', 'LineWidth', 1.5, 'Color', traj_color);
 
-        % Mark start and end points
-        h_start = plot(traj(2,1) * 180/pi, traj(1,1) * 180/pi, 'bo', 'MarkerSize', 10, 'MarkerFaceColor', 'b');
-        h_end = plot(traj(2,end) * 180/pi, traj(1,end) * 180/pi, 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
+        % Mark start and end points with different colors based on trajectory type
+        h_start = plot(traj(2,1) * 180/pi, traj(1,1) * 180/pi, 'o', 'MarkerSize', 10, 'MarkerFaceColor', start_color, 'Color', start_color);
+        h_end = plot(traj(2,end) * 180/pi, traj(1,end) * 180/pi, 'o', 'MarkerSize', 10, 'MarkerFaceColor', end_color, 'Color', end_color);
 
         % Current position marker (will be updated during animation)
         h_current = plot(traj(2,1) * 180/pi, traj(1,1) * 180/pi, 'ro', 'MarkerSize', 12, 'LineWidth', 2);
@@ -247,49 +292,22 @@ try
         grid on;
         xlabel('Sideslip Angle \beta (deg)', 'FontSize', 12);
         ylabel('Yaw Rate \gamma (deg/s)', 'FontSize', 12);
-        title('State Space View (2D Projection)', 'FontSize', 14);
         
-        % Collect valid handles and their labels
-        legend_handles = [];
-        legend_labels = {};
-        
-        if ~isempty(h_brs) && ishandle(h_brs)
-            legend_handles = [legend_handles, h_brs];
-            legend_labels{end+1} = 'BRS Boundary';
+        % Set title based on trajectory type
+        if opts.isBRS
+            title('State Space View (BRS)', 'FontSize', 14);
+        else
+            title('State Space View (FRS)', 'FontSize', 14);
         end
         
-        if ~isempty(h_target) && ishandle(h_target)
-            legend_handles = [legend_handles, h_target];
-            legend_labels{end+1} = 'Target Set';
+        % Create legend with appropriate labels based on trajectory type
+        if opts.isBRS
+            legend([h_brs, h_target, h_traj, h_start, h_end], 'BRS Boundary', 'Target Set', 'Trajectory', 'Start', 'End (Target Reached)', 'Location', 'best', 'FontSize', 10);
+        else
+            legend([h_brs, h_target, h_traj, h_start, h_end], 'FRS Boundary', 'Target Set', 'Trajectory', 'Start', 'End (Target Escaped)', 'Location', 'best', 'FontSize', 10);
         end
         
-        if ~isempty(h_traj) && ishandle(h_traj)
-            legend_handles = [legend_handles, h_traj];
-            legend_labels{end+1} = 'Trajectory';
-        end
-        
-        if ~isempty(h_start) && ishandle(h_start)
-            legend_handles = [legend_handles, h_start];
-            legend_labels{end+1} = 'Start';
-        end
-        
-        if ~isempty(h_end) && ishandle(h_end)
-            legend_handles = [legend_handles, h_end];
-            legend_labels{end+1} = 'End';
-        end
-        
-        if ~isempty(h_current) && ishandle(h_current)
-            legend_handles = [legend_handles, h_current];
-            legend_labels{end+1} = 'Current Position';
-        end
-        
-        % Create legend only if we have valid handles
-        if ~isempty(legend_handles)
-            legend(legend_handles, legend_labels, 'Location', 'best', 'FontSize', 10);
-        end
-
-        % Set reasonable axis limits
-        axis tight;
+        % Set axis limits
         ax_limits = axis();
         axis_margin = 0.1 * max(ax_limits(2)-ax_limits(1), ax_limits(4)-ax_limits(3));
         axis([ax_limits(1)-axis_margin, ax_limits(2)+axis_margin, ...
@@ -326,15 +344,20 @@ try
     % The car should be rotated by -initial_beta to align velocity vector with car's x-axis
     car_rotation = -initial_beta;
 
-    % Plot the full path
-    h_full_path = plot(x, y, 'b-', 'LineWidth', 2);
+    % Plot the full path with color based on trajectory type
+    h_full_path = plot(x, y, '-', 'LineWidth', 2, 'Color', traj_color);
     
-    % Mark start and end positions
-    plot(x(1), y(1), 'bo', 'MarkerSize', 10, 'MarkerFaceColor', 'b');
-    plot(x(end), y(end), 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
+    % Mark start and end positions with different colors based on trajectory type
+    plot(x(1), y(1), 'o', 'MarkerSize', 10, 'MarkerFaceColor', start_color, 'Color', start_color);
+    plot(x(end), y(end), 'o', 'MarkerSize', 10, 'MarkerFaceColor', end_color, 'Color', end_color);
     
     % Create car shape - pre-rotated to match initial velocity direction
-    car_color = [0.3, 0.5, 0.8];  % Light blue
+    % Choose car color based on trajectory type
+    if opts.isBRS
+        car_color = [0.3, 0.5, 0.8];  % Light blue for BRS
+    else
+        car_color = [0.8, 0.5, 0.3];  % Light orange/red for FRS
+    end
     
     % Create original car outline
     orig_car_outline = [
@@ -455,7 +478,13 @@ try
                           'FaceColor', 'k', 'EdgeColor', 'k');
 
     % Create velocity vector arrow (initially at origin)
-    h_velocity_vector = quiver(0, 0, 0, 0, 0, 'g', 'LineWidth', 2, 'MaxHeadSize', 0.5);
+    % Use color based on trajectory type
+    if opts.isBRS
+        velocity_color = 'b';  % Blue for BRS
+    else
+        velocity_color = 'r';  % Red for FRS
+    end
+    h_velocity_vector = quiver(0, 0, 0, 0, 0, velocity_color, 'LineWidth', 2, 'MaxHeadSize', 0.5);
     
     % Add direction indicator - now aligned with car's frame but considering initial rotation
     arrow_length = opts.carLength * 0.6;
@@ -468,7 +497,13 @@ try
     grid on;
     xlabel('X Position (m)', 'FontSize', 12);
     ylabel('Y Position (m)', 'FontSize', 12);
-    title('Car-Centric View', 'FontSize', 14);
+    
+    % Set title based on trajectory type
+    if opts.isBRS
+        title('Car-Centric View (BRS Trajectory)', 'FontSize', 14);
+    else
+        title('Car-Centric View (FRS Trajectory)', 'FontSize', 14);
+    end
 
     min_margin = 5;
 
@@ -499,9 +534,8 @@ try
                                'Value', 0);
     end
 
-    % Add title to the figure
-    sgtitle(sprintf('Car Trajectory Visualization (v_x = %.1f m/s)', vx), ...
-            'FontSize', 16, 'FontWeight', 'bold');
+    % Add title to the figure (different based on trajectory type)
+    sgtitle(main_title, 'FontSize', 16, 'FontWeight', 'bold');
     
     % Store variables needed by nested functions in a struct for reference
     userData = struct(...
@@ -542,7 +576,10 @@ try
         'time_display', time_display, ...
         'left_panel', left_panel, ...
         'car_outline', car_outline, ...
-        'h_velocity_vector', h_velocity_vector ...
+        'h_velocity_vector', h_velocity_vector, ...
+        'velocity_color', velocity_color, ...
+        'isBRS', opts.isBRS, ...
+        'final_text', final_text ...
         );
     
     % Store the userData in the figure for access by callbacks
@@ -630,28 +667,14 @@ catch err
             'carLength', opts.carLength, ...
             'carWidth', opts.carWidth, ...
             'wheelBase', opts.wheelBase, ...
-            'gridSize', opts.gridSize);
+            'gridSize', opts.gridSize, ...
+            'isBRS', opts.isBRS);
     end
 end
 
-end
+% Add the missing callback functions at the end of the visualizeCarTrajectory.m file
 
-% Helper function to rotate points
-function rotated_points = rotatePoints(points, angle)
-    % Create rotation matrix
-    R = [cos(angle), -sin(angle); sin(angle), cos(angle)];
-    
-    % Rotate points
-    rotated_points = (R * points')';
-end
-
-% Helper function to translate points
-function translated_points = translatePoints(points, translation)
-    % Add translation vector to each point
-    translated_points = points + repmat(translation, size(points, 1), 1);
-end
-
-% Callback function for the slider - will have access to figure's UserData
+%% Callback function for the slider - will have access to figure's UserData
 function updateVisualizationCallback(src, ~)
     % Get the userData from the figure
     fig = get(src, 'Parent');
@@ -664,7 +687,7 @@ function updateVisualizationCallback(src, ~)
     updateVisualization(idx, userData);
 end
 
-% Callback function for the timer - will have access to figure's UserData
+%% Callback function for the timer - will have access to figure's UserData
 function updateFromTimerCallback(~, ~)
     % Find the figure with our visualization
     fig = findobj('Type', 'figure', 'Name', 'Car Trajectory Visualization');
@@ -697,7 +720,7 @@ function updateFromTimerCallback(~, ~)
     updateVisualization(next_idx, userData);
 end
 
-% Callback function for play/pause button
+%% Callback function for play/pause button
 function togglePlaybackCallback(src, ~)
     % Get the figure and its userData
     fig = get(src, 'Parent');
@@ -718,7 +741,7 @@ function togglePlaybackCallback(src, ~)
     end
 end
 
-% Function to handle figure closing
+%% Function to handle figure closing
 function onClose(src, ~)
     % Get userData from the figure
     userData = get(src, 'UserData');
@@ -734,7 +757,7 @@ function onClose(src, ~)
 end
 
 function updateVisualization(idx, userData)
-    % Get current state
+    % Current state and time
     current_time = userData.traj_tau(idx);
     current_gamma = userData.gamma(idx);
     current_beta = userData.beta(idx);
@@ -966,9 +989,8 @@ function updateVisualization(idx, userData)
     set(userData.h_velocity_vector, 'XData', current_x, 'YData', current_y, ...
                       'UData', vx_scaled, 'VData', vy_scaled);
     
-    % 9. Update any other elements as needed (like the grid points, path, etc.)
-    % (The existing code for those elements can remain unchanged)
-    
     % Update display
     drawnow;
+end
+
 end

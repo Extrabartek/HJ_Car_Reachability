@@ -2,10 +2,10 @@ function [traj, traj_tau, traj_u, metrics] = computeOptimizedTrajectory(g, data,
 % COMPUTEOPTIMIZEDTRAJECTORY Computes optimal trajectory using optimized methods
 %
 % This function implements optimized methods for computing trajectories based on
-% reachability analysis results. It focuses on performance and accuracy through:
-% 1) Precomputation of value function gradients for all time slices
-% 2) Time-of-arrival function based guidance when available
-% 3) Optimized integration with constraint enforcement
+% reachability analysis results, supporting both BRS and FRS trajectories.
+%
+% For BRS trajectories: Control tries to minimize value function to reach target
+% For FRS trajectories: Control tries to maximize value function to escape target
 %
 % Inputs:
 %   g           - Grid structure from reachability analysis
@@ -20,11 +20,12 @@ function [traj, traj_tau, traj_u, metrics] = computeOptimizedTrajectory(g, data,
 %     .useFRS         - Whether to use FRS for safety constraints (default: false)
 %     .data_frs       - FRS data (required if useFRS = true)
 %     .frsWeight      - Weight for FRS constraints (default: 0.5)
-%     .uMode          - Control mode: 'min' or 'max' (default: 'min')
+%     .uMode          - Control mode: 'min' (BRS) or 'max' (FRS) (default: 'min')
 %     .dMode          - Disturbance mode: 'min' or 'max' (default: 'max')
 %     .maxTime        - Maximum trajectory time (default: based on tau)
 %     .dt             - Time step for integration (default: derived from tau)
 %     .visualize      - Whether to visualize during computation (default: false)
+%     .reverseFRS     - For FRS trajectories only: indicates this is an FRS trajectory
 %
 % Outputs:
 %   traj            - Optimal trajectory states (columns are time points)
@@ -33,13 +34,16 @@ function [traj, traj_tau, traj_u, metrics] = computeOptimizedTrajectory(g, data,
 %   metrics         - Structure with performance metrics
 %
 % Examples:
-%   % Using gradient pre-computation method:
+%   % Using gradient pre-computation method for BRS trajectory:
 %   options.method = 'gradient';
+%   options.uMode = 'min';
 %   [traj, tau] = computeOptimizedTrajectory(g, data, tau, xinit, dynSys, options);
 %
-%   % Using time-of-arrival function:
+%   % Using time-of-arrival function for FRS trajectory:
 %   options.method = 'arrival';
 %   options.arrivalTime = arrival_time;
+%   options.uMode = 'max';  % For FRS, control maximizes value function
+%   options.reverseFRS = true;
 %   [traj, tau, u] = computeOptimizedTrajectory(g, data, tau, xinit, dynSys, options);
 
 %% Process input parameters and set defaults
@@ -53,7 +57,21 @@ if ~isfield(options, 'method')
 end
 
 if ~isfield(options, 'uMode')
+    options.uMode = 'min';  % Default to BRS behavior
+end
+
+% Determine if this is an FRS trajectory based on uMode and reverseFRS flag
+is_frs_trajectory = strcmp(options.uMode, 'max') || ...
+                   (isfield(options, 'reverseFRS') && options.reverseFRS);
+
+if is_frs_trajectory
+    % Ensure uMode is set correctly for FRS
+    options.uMode = 'max';
+    fprintf('FRS trajectory mode: control maximizes value function to escape target\n');
+else
+    % Ensure uMode is set correctly for BRS
     options.uMode = 'min';
+    fprintf('BRS trajectory mode: control minimizes value function to reach target\n');
 end
 
 if ~isfield(options, 'dMode')
@@ -110,6 +128,23 @@ else
     data_full = data;
 end
 
+% For FRS trajectories, we might need to handle time differently
+if is_frs_trajectory
+    % For FRS, we want to start from t=0 and move forward in time
+    % This is similar to BRS computation, but with different control objective
+    fprintf('Computing forward trajectory with %s objective\n', options.uMode);
+    
+    % Check if initial state is close to target set
+    if isfield(options, 'finalSet')
+        target_value = eval_u(g, options.finalSet, xinit);
+        % For FRS trajectories, ideal initial states are inside or close to target
+        if target_value > 0
+            warning(['For FRS trajectories, initial state should ideally be in the target set. ', ...
+                     'Current value: %.4f'], target_value);
+        end
+    end
+end
+
 %% Execute appropriate computation method
 switch options.method
     case 'arrival'
@@ -131,11 +166,18 @@ function [traj, traj_tau, traj_u, metrics] = computeTrajectoryWithArrivalTime(g,
 % Trajectory computation using time-of-arrival function for better direction
 
 arrival_time = options.arrivalTime;
+is_frs_trajectory = strcmp(options.uMode, 'max') || ...
+                   (isfield(options, 'reverseFRS') && options.reverseFRS);
 
-% Check if initial state is reachable using arrival time function
+% Check if initial state is in reachable set using arrival time function
 arr_val = eval_u(g, arrival_time, xinit);
 if ~isfinite(arr_val)
-    warning('Initial state is not reachable according to arrival time function.');
+    if is_frs_trajectory
+        warning('Initial state is not in FRS according to arrival time function.');
+    else
+        warning('Initial state is not in BRS according to arrival time function.');
+    end
+    
     % Initialize empty trajectory and metrics
     traj = xinit;
     traj_tau = tau(1);
@@ -148,16 +190,26 @@ if ~isfinite(arr_val)
     metrics.control_energy = 0;
     return;
 else
-    fprintf('Initial state is reachable in %.2f seconds.\n', arr_val);
+    if is_frs_trajectory
+        fprintf('Initial state is in FRS, can be reached in %.2f seconds.\n', arr_val);
+    else
+        fprintf('Initial state is in BRS, can reach target in %.2f seconds.\n', arr_val);
+    end
 end
 
 % Compute gradients of arrival time
-% Note: arrival time DECREASES toward the target, so we need to negate the gradient
+% For BRS: arrival time DECREASES toward the target, so we negate the gradient
+% For FRS: we handle differently based on how arrival time was computed
 fprintf('Computing arrival time gradients...\n');
 arrival_grad = computeGradients(g, arrival_time);
-for i = 1:length(arrival_grad)
-    arrival_grad{i} = -arrival_grad{i};  % Negate for correct direction
+
+% For BRS, we negate the gradient to point toward decreasing values (toward target)
+if ~is_frs_trajectory
+    for i = 1:length(arrival_grad)
+        arrival_grad{i} = -arrival_grad{i};  % Negate for BRS
+    end
 end
+% For FRS, if using the standard arrival time computation, we don't negate
 
 % Initialize trajectory
 dt = options.dt;
@@ -174,7 +226,11 @@ dynSys.x = xinit;
 
 % Set up visualization if enabled
 if options.visualize
-    setupVisualization(g, arrival_time, xinit, 'Arrival Time Method');
+    if is_frs_trajectory
+        setupVisualization(g, arrival_time, xinit, 'FRS: Arrival Time Method');
+    else
+        setupVisualization(g, arrival_time, xinit, 'BRS: Arrival Time Method');
+    end
 end
 
 % Main trajectory computation loop
@@ -207,22 +263,40 @@ for i = 1:max_steps
     % Compute control
     u = dynSys.optCtrl(t_current, x_current, deriv_at_x, options.uMode);
     
-    % Apply FRS constraint if enabled
-    if options.useFRS && isfield(options, 'data_frs')
+    % Apply FRS constraint if enabled for BRS trajectories
+    if ~is_frs_trajectory && options.useFRS && isfield(options, 'data_frs')
         u = applyFRSConstraint(dynSys, t_current, x_current, deriv_at_x, u, g, options);
     end
     
     % Store control
     traj_u(:,i) = u;
     
-    % Check if we've reached the target (very small arrival time)
-    if arr_val <= tau(1) + dt  % Very close to initial time = target reached
-        fprintf('Target reached at step %d (time %.2fs)!\n', i, t_current);
-        % Truncate trajectory
-        traj = traj(:, 1:i);
-        traj_tau = traj_tau(1:i);
-        traj_u = traj_u(:, 1:i-1);
-        break;
+    % Check if we've reached our objective based on trajectory type
+    if ~is_frs_trajectory
+        % For BRS: Check if we've reached the target (very small arrival time)
+        if arr_val <= tau(1) + dt  % Very close to initial time = target reached
+            fprintf('Target reached at step %d (time %.2fs)!\n', i, t_current);
+            % Truncate trajectory
+            traj = traj(:, 1:i);
+            traj_tau = traj_tau(1:i);
+            traj_u = traj_u(:, 1:i-1);
+            break;
+        end
+    else
+        % For FRS: Check if we've escaped far enough or reached computation boundary
+        % Here we use the value function to check escape, not just arrival time
+        if isfield(options, 'finalSet')
+            value = eval_u(g, options.finalSet, x_current);
+            % If we're significantly outside the target set, consider it escaped
+            if value > 0.2  % Use a threshold above 0 to ensure we're well outside
+                fprintf('Escaped target sufficiently at step %d (time %.2fs)!\n', i, t_current);
+                % Truncate trajectory
+                traj = traj(:, 1:i);
+                traj_tau = traj_tau(1:i);
+                traj_u = traj_u(:, 1:i-1);
+                break;
+            end
+        end
     end
     
     % Propagate dynamics for one step
@@ -260,11 +334,20 @@ else
     metrics.final_set_value = eval_u(g, getData(data, 'end'), traj(:,end));
 end
 
-metrics.reached_target = (metrics.final_set_value <= 0);
+% Interpret metrics differently based on trajectory type
+if ~is_frs_trajectory
+    % For BRS: We want to reach the target (value <= 0)
+    metrics.reached_target = (metrics.final_set_value <= 0);
+else
+    % For FRS: We want to escape the target (value > 0)
+    metrics.escaped_target = (metrics.final_set_value > 0);
+    metrics.escape_distance = metrics.final_set_value;  % Value indicates how far we've escaped
+end
+
 metrics.final_arrival_time = eval_u(g, arrival_time, traj(:,end));
 
 % Check FRS constraint if applicable
-if options.useFRS && isfield(options, 'data_frs')
+if ~is_frs_trajectory && options.useFRS && isfield(options, 'data_frs')
     metrics = checkFRSConstraint(metrics, traj, traj_tau, options.data_frs, g);
 end
 
@@ -274,21 +357,44 @@ end
 function [traj, traj_tau, traj_u, metrics] = computeTrajectoryWithGradientPrecomputation(g, data, tau, xinit, dynSys, options)
 % Optimized trajectory computation method with pre-computation of all gradients
 
-% Check if initial state is in BRS
-initial_value = eval_u(g, getData(data, 'end'), xinit);
-if initial_value > 0
-    warning('Initial state is outside the reachable set (value = %f)', initial_value);
-    % Initialize empty trajectory and metrics
-    traj = xinit;
-    traj_tau = tau(1);
-    traj_u = [];
+% Determine trajectory type
+is_frs_trajectory = strcmp(options.uMode, 'max') || ...
+                   (isfield(options, 'reverseFRS') && options.reverseFRS);
+
+% Check if initial state is valid based on trajectory type
+if ~is_frs_trajectory
+    % For BRS: Check if initial state is in BRS
+    initial_value = eval_u(g, getData(data, 'end'), xinit);
+    if initial_value > 0
+        warning('Initial state is outside the BRS (value = %f)', initial_value);
+        % Initialize empty trajectory and metrics
+        traj = xinit;
+        traj_tau = tau(1);
+        traj_u = [];
+        
+        metrics = struct();
+        metrics.time_to_target = 0;
+        metrics.final_set_value = initial_value;
+        metrics.reached_target = false;
+        metrics.control_energy = 0;
+        return;
+    end
+else
+    % For FRS: Check if initial state is in or close to target
+    if isfield(options, 'finalSet')
+        target_value = eval_u(g, options.finalSet, xinit);
+        if target_value > 0
+            warning(['For FRS trajectories, initial state should ideally be in the target set. ', ...
+                     'Current initial state is outside target (value = %.4f)'], target_value);
+        end
+    end
     
-    metrics = struct();
-    metrics.time_to_target = 0;
-    metrics.final_set_value = initial_value;
-    metrics.reached_target = false;
-    metrics.control_energy = 0;
-    return;
+    % Also check if initial state is in FRS
+    initial_value = eval_u(g, getData(data, 'end'), xinit);
+    if initial_value > 0
+        warning(['Initial state may not be in FRS (value = %.4f). ', ...
+                 'FRS trajectories work best when starting within the FRS.'], initial_value);
+    end
 end
 
 % Pre-compute all gradients for each time slice
@@ -302,9 +408,14 @@ if use_arrival_time
     fprintf('Computing arrival time gradients for additional guidance...\n');
     arrival_time = options.arrivalTime;
     arrival_grad = computeGradients(g, arrival_time);
-    for i = 1:length(arrival_grad)
-        arrival_grad{i} = -arrival_grad{i};  % Negate for correct direction
+    
+    % For BRS, we negate the gradient to point toward decreasing values (toward target)
+    if ~is_frs_trajectory
+        for i = 1:length(arrival_grad)
+            arrival_grad{i} = -arrival_grad{i};  % Negate for BRS
+        end
     end
+    % For FRS, we don't negate the gradient to point toward increasing values (away from target)
 end
 
 % Create fast lookup for mapping time to index
@@ -326,9 +437,17 @@ dynSys.x = xinit;
 % Set up visualization if enabled
 if options.visualize
     if use_arrival_time
-        setupVisualization(g, arrival_time, xinit, 'Gradient+Arrival Time Method');
+        if is_frs_trajectory
+            setupVisualization(g, arrival_time, xinit, 'FRS: Gradient+Arrival Time Method');
+        else
+            setupVisualization(g, arrival_time, xinit, 'BRS: Gradient+Arrival Time Method');
+        end
     else
-        setupVisualization(g, getData(data, 'end'), xinit, 'Gradient Method');
+        if is_frs_trajectory
+            setupVisualization(g, getData(data, 'end'), xinit, 'FRS: Gradient Method');
+        else
+            setupVisualization(g, getData(data, 'end'), xinit, 'BRS: Gradient Method');
+        end
     end
 end
 
@@ -340,40 +459,64 @@ for i = 1:max_steps
     x_current = traj(:,i);
     t_current = traj_tau(i);
     
-    % Choose which gradient to use
+    % Choose which gradient to use based on trajectory type and available data
     if use_arrival_time
-        % Get arrival time for current state
-        arrival_val = eval_u(g, arrival_time, x_current);
-        
-        % If state is not in BRS (arrival_val is inf), stop computation
-        if ~isfinite(arrival_val)
-            warning('Current state at step %d is outside the BRS. Stopping computation.', i);
-            % Truncate trajectory
-            traj = traj(:, 1:i);
-            traj_tau = traj_tau(1:i);
-            traj_u = traj_u(:, 1:i-1);
-            break;
-        end
-        
-        % Use arrival time gradient (already negated for correct direction)
-        deriv_at_x = eval_u(g, arrival_grad, x_current);
-        
-        % Visualize if enabled
-        if options.visualize
-            updateVisualization(traj, i, t_current, arrival_val);
-        end
-        
-        % Check if we've reached the target (very small arrival time)
-        if arrival_val <= tau(1) + dt
-            fprintf('Target reached at step %d (time %.2fs)!\n', i, t_current);
-            % Truncate trajectory
-            traj = traj(:, 1:i);
-            traj_tau = traj_tau(1:i);
-            traj_u = traj_u(:, 1:i-1);
-            break;
+        % Use arrival time gradient if available
+        if ~is_frs_trajectory
+            % For BRS: Get arrival time for current state
+            arrival_val = eval_u(g, arrival_time, x_current);
+            
+            % If state is not in BRS (arrival_val is inf), stop computation
+            if ~isfinite(arrival_val)
+                warning('Current state at step %d is outside the BRS. Stopping computation.', i);
+                % Truncate trajectory
+                traj = traj(:, 1:i);
+                traj_tau = traj_tau(1:i);
+                traj_u = traj_u(:, 1:i-1);
+                break;
+            end
+            
+            % Use arrival time gradient (already negated for BRS)
+            deriv_at_x = eval_u(g, arrival_grad, x_current);
+            
+            % Visualize if enabled
+            if options.visualize
+                updateVisualization(traj, i, t_current, arrival_val);
+            end
+            
+            % Check if we've reached the target (very small arrival time)
+            if arrival_val <= tau(1) + dt
+                fprintf('Target reached at step %d (time %.2fs)!\n', i, t_current);
+                % Truncate trajectory
+                traj = traj(:, 1:i);
+                traj_tau = traj_tau(1:i);
+                traj_u = traj_u(:, 1:i-1);
+                break;
+            end
+        else
+            % For FRS: Get arrival time for current state
+            arrival_val = eval_u(g, arrival_time, x_current);
+            
+            % If state is not in FRS (arrival_val is inf), stop computation
+            if ~isfinite(arrival_val)
+                warning('Current state at step %d is outside the FRS. Stopping computation.', i);
+                % Truncate trajectory
+                traj = traj(:, 1:i);
+                traj_tau = traj_tau(1:i);
+                traj_u = traj_u(:, 1:i-1);
+                break;
+            end
+            
+            % Use arrival time gradient (no need to negate for FRS)
+            deriv_at_x = eval_u(g, arrival_grad, x_current);
+            
+            % Visualize if enabled
+            if options.visualize
+                updateVisualization(traj, i, t_current, arrival_val);
+            end
         end
     else
-        % Use precomputed BRS gradients
+        % Use precomputed BRS/FRS gradients
         time_idx = tau_to_idx(t_current);
         time_specific_gradients = all_gradients{time_idx};
         deriv_at_x = eval_u(g, time_specific_gradients, x_current);
@@ -382,38 +525,42 @@ for i = 1:max_steps
         if options.visualize
             updateVisualization(traj, i, t_current);
         end
-        
-        % Check if target is reached using BRS value
-        brs_val = eval_u(g, getData(data, 'end'), x_current);
-        if brs_val < -0.95  % Deeply inside BRS, likely close to target
-            if i > max_steps / 2  % Only consider stopping in latter half of trajectory
-                fprintf('Target vicinity reached at step %d (time %.2fs).\n', i, t_current);
-                break;
-            end
-        end
     end
     
     % Compute optimal control
     u = dynSys.optCtrl(t_current, x_current, deriv_at_x, options.uMode);
     
-    % Apply FRS constraint if enabled
-    if options.useFRS && isfield(options, 'data_frs')
+    % Apply FRS constraint if enabled (for BRS trajectories only)
+    if ~is_frs_trajectory && options.useFRS && isfield(options, 'data_frs')
         u = applyFRSConstraint(dynSys, t_current, x_current, deriv_at_x, u, g, options);
     end
     
     % Store control
     traj_u(:,i) = u;
     
-    % Check if custom target set is reached
+    % Check if objective reached based on trajectory type
     if isfield(options, 'finalSet')
         target_value = eval_u(g, options.finalSet, x_current);
-        if target_value <= 0
-            fprintf('Custom target reached at step %d (time %.2fs)!\n', i, t_current);
-            % Truncate trajectory
-            traj = traj(:, 1:i);
-            traj_tau = traj_tau(1:i);
-            traj_u = traj_u(:, 1:i-1);
-            break;
+        if ~is_frs_trajectory
+            % For BRS: Check if target reached
+            if target_value <= 0
+                fprintf('Target reached at step %d (time %.2fs)!\n', i, t_current);
+                % Truncate trajectory
+                traj = traj(:, 1:i);
+                traj_tau = traj_tau(1:i);
+                traj_u = traj_u(:, 1:i-1);
+                break;
+            end
+        else
+            % For FRS: Check if sufficiently escaped from target
+            if target_value > 0.2  % Use a threshold to ensure we're well outside
+                fprintf('Escaped target sufficiently at step %d (time %.2fs)!\n', i, t_current);
+                % Truncate trajectory
+                traj = traj(:, 1:i);
+                traj_tau = traj_tau(1:i);
+                traj_u = traj_u(:, 1:i-1);
+                break;
+            end
         end
     end
     
@@ -458,14 +605,22 @@ else
     metrics.final_set_value = eval_u(g, getData(data, 'end'), traj(:,end));
 end
 
-metrics.reached_target = (metrics.final_set_value <= 0);
+% Interpret metrics differently based on trajectory type
+if ~is_frs_trajectory
+    % For BRS: We want to reach the target (value <= 0)
+    metrics.reached_target = (metrics.final_set_value <= 0);
+else
+    % For FRS: We want to escape the target (value > 0)
+    metrics.escaped_target = (metrics.final_set_value > 0);
+    metrics.escape_distance = metrics.final_set_value;  % Value indicates how far we've escaped
+end
 
 if use_arrival_time
     metrics.final_arrival_time = eval_u(g, arrival_time, traj(:,end));
 end
 
 % Check FRS constraint if applicable
-if options.useFRS && isfield(options, 'data_frs')
+if ~is_frs_trajectory && options.useFRS && isfield(options, 'data_frs')
     metrics = checkFRSConstraint(metrics, traj, traj_tau, options.data_frs, g);
 end
 
