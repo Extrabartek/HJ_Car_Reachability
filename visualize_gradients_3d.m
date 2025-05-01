@@ -259,12 +259,12 @@ if opts.showBoundary
     
     % Create 3D grid for isosurface
     [beta_grid, gamma_grid, delta_grid] = meshgrid(...
-        g.vs{2} * 180/pi,...  % beta (sideslip angle)
-        g.vs{1} * 180/pi,...  % gamma (yaw rate)
-        g.vs{3} * 180/pi);    % delta (steering angle)
+        g.xs{2}(1, :, 1) * 180/pi,...  % beta (sideslip angle)
+        g.xs{1}(:, 1, 1) * 180/pi,...  % gamma (yaw rate)
+        g.xs{3}(1, 1, :) * 180/pi);    % delta (steering angle)
 
     % Plot zero level set
-    [faces, verts] = isosurface(beta_grid, gamma_grid, delta_grid, permute(final_brs, [2,1,3]), 0);
+    [faces, verts] = isosurface(beta_grid, gamma_grid, delta_grid, final_brs, 0);
     if ~isempty(faces)
         p = patch('Faces', faces, 'Vertices', verts, ...
                 'FaceColor', 'blue', 'EdgeColor', 'none', 'FaceAlpha', 0.2);

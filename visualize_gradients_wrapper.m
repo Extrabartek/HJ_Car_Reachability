@@ -15,7 +15,7 @@ function visualize_gradients_wrapper()
 
 %% Path to results folder
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-results_folder = fullfile(main_results_folder, 'steered_brs_results_20250429_142622_vx30-30_dvmax20-20');
+results_folder = fullfile(main_results_folder, 'steered_brs_results_20250501_103706_vx20-20_dvmax40-40');
 
 %% Data selection
 velocity_idx = 1;        % Index of velocity to use
@@ -23,9 +23,9 @@ control_idx = 1;         % Index of control limit to use
 use_target_set = false;  % Set to true to visualize gradients of target set instead of BRS
 
 %% Visualization parameters
-sampling_density = [15, 15, 10]; % Number of arrows in each dimension [gamma, beta, delta]
+sampling_density = [7, 7, 5]; % Number of arrows in each dimension [gamma, beta, delta]
                              % Use lower numbers (8-15) for memory efficiency
-arrow_scale = 2;       % Scale factor for arrow size
+arrow_scale = 1.5;       % Scale factor for arrow size
 arrow_color = 'r';       % Color for arrows: 'r', 'g', 'b', or [R G B]
 normalize_arrows = true; % Set to true to show only direction (not magnitude)
 show_boundary = true;    % Set to true to show the BRS boundary
