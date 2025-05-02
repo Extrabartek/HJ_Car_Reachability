@@ -25,7 +25,7 @@ end
 % Initialize arrival time with infinity (points outside BRS)
 arrival_time = inf(grid_dims);
 
-% Process each time step in reverse (from final time to initial time)
+% Process each time step
 for t_idx = 1:1:num_times
     % Extract value function at current time
     if ndims(data_brs) == 4

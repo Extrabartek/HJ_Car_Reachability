@@ -21,7 +21,7 @@ visualize_results = false;    % Set to false to skip visualization
 save_plots = false;          % Set to true to save visualization figures
 
 %% Computation type
-direction = 'forward';      % Options: 'backward' (BRS) or 'forward' (FRS)
+direction = 'backward';      % Options: 'backward' (BRS) or 'forward' (FRS)
 controlType = 'dv';          % Options: 'mz' (yaw moment) or 'dv' (steering rate)
 
 %% Vehicle parameters
@@ -34,8 +34,8 @@ control_limits = [40];    % For 'mz' control: [10000] means 10,000 N·m
                              % For 'dv' control: [20] means 20 deg/s
 
 %% Time parameters
-tMax = 1.5;                  % Maximum simulation time [s]
-dt = 0.1;                   % Time step [s]
+tMax = 1.0;                  % Maximum simulation time [s]
+dt = 0.01;                   % Time step [s]
 
 %% Grid parameters
 % Grid size: Number of grid points in each dimension
@@ -48,8 +48,8 @@ gridSize = [51, 51, 21];               % Empty = use defaults based on controlTy
 % Grid limits in degrees (will be converted to radians)
 % - For 'mz': [gamma_min, beta_min] and [gamma_max, beta_max]
 % - For 'dv': [gamma_min, beta_min, delta_min] and [gamma_max, beta_max, delta_max]
-gridMin_deg = [-50, -5, -10];            % Empty = use defaults based on controlType
-gridMax_deg = [50, 5, 10];            % Empty = use defaults based on controlType
+gridMin_deg = [-300, -30, -10];            % Empty = use defaults based on controlType
+gridMax_deg = [300, 30, 10];            % Empty = use defaults based on controlType
                              % Default for 'mz': [-150, -25] to [150, 25]
                              % Default for 'dv': [-150, -25, -10] to [150, 25, 10]
 
@@ -69,7 +69,7 @@ accuracy = 'veryHigh';           % Numerical accuracy: 'low', 'medium', 'high', 
 
 %% Path to existing results folder (only used if generate_results = false)
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-existing_result_folder = strcat(main_results_folder, 'steered_frs_results_20250430_105435_vx20-20_dvmax40-40');  % Path to the results folder to load
+existing_result_folder = strcat(main_results_folder, 'steered_brs_results_20250501_172504_vx20-20_dvmax40-40');  % Path to the results folder to load
 
 %% Visualization options
 % Types of plots to generate (cell array of strings)

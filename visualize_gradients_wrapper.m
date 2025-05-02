@@ -15,7 +15,7 @@ function visualize_gradients_wrapper()
 
 %% Path to results folder
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-results_folder = fullfile(main_results_folder, 'steered_brs_results_20250501_103706_vx20-20_dvmax40-40');
+results_folder = fullfile(main_results_folder, 'steered_brs_results_20250429_142622_vx30-30_dvmax20-20');
 
 %% Data selection
 velocity_idx = 1;        % Index of velocity to use
