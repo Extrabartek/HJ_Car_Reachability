@@ -10,6 +10,11 @@ function reachability_visualization_tool()
 % The tool works with the new computeOptimizedTrajectory function for enhanced
 % trajectory computation, while maintaining compatibility with older functions.
 %
+% Supported dynamic systems:
+% - Bicycle model (Standard and Steered variants)
+% - Double Integrator
+% - Dubins Car
+%
 % Usage:
 %   Simply run this script and follow the interactive menu prompts
 %   or modify the configuration parameters at the beginning
@@ -22,7 +27,7 @@ main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Re
 
 %% Reachability result selection
 % Path to the reachability results folder
-brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250502_155507_vx20-20_dvmax40-40');
+brs_folder = fullfile(main_results_folder, 'dubinscar_brs_results_20250507_142451_v5_turn40-40');
 
 % Optional: Path to FRS results folder - required for FRS trajectory visualization
 frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250501_103930_vx20-20_dvmax40-40');
@@ -44,10 +49,11 @@ plot_types = {};  % Visualization types for reachable sets
 compute_new_trajectory = true;   % Set to false to load a previously saved trajectory
 trajectory_file = 'trajectory_data.mat';  % For loading/saving trajectory data
 
-% Initial state for trajectory computation
-% Format: [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
-% Example: 10 deg/s yaw rate, 5 deg sideslip, 3 deg steering
-xinit = [deg2rad(-20); deg2rad(-8); deg2rad(2)];
+% Initial state for trajectory computation - format depends on system type:
+% - Bicycle Model:    [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
+% - Double Integrator: [position; velocity]
+% - Dubins Car:       [x; y; theta] (position and heading) in meters and radians
+xinit = [-5; 0; 0];
 
 % Trajectory computation method - options: 'arrival', 'gradient', or 'legacy'
 % 'arrival'  - Uses time-of-arrival function for guidance (fastest)
@@ -56,8 +62,8 @@ xinit = [deg2rad(-20); deg2rad(-8); deg2rad(2)];
 trajectory_method = 'gradient';  
 
 % Parameters for trajectory computation
-velocity_idx = 1;               % Index of velocity to use from data
-control_idx = 1;                % Index of control limit to use (dv_max or Mz)
+velocity_idx = 1;               % Index of velocity to use from data (for bicycle models)
+control_idx = 1;                % Index of control limit to use 
 max_time = 5.5;                % Maximum trajectory time (seconds)
 use_frs_constraint = false;     % Use FRS for safety constraints (for BRS trajectories only)
 frs_weight = 0.5;               % Weight for FRS constraints (0-1)
@@ -121,28 +127,117 @@ active_data = load(combined_file);
 % Extract key information
 g = active_data.g;
 data0 = active_data.data0;  % Target set
-velocities = active_data.velocities;
 tau = active_data.tau;  % Time vector
 base_params = active_data.base_params;
 
-% Determine model type (steering or yaw moment)
-is_steered_model = length(g.N) == 3;  % 3D grid indicates steered model
-if is_steered_model
-    fprintf('Detected 3D steered bicycle model\n');
-    if isfield(active_data, 'dvmax_values')
-        control_limits = active_data.dvmax_values;
-        control_type = 'dv';
-    else
-        error('Could not find dvmax_values in data for steered model');
-    end
+%% Determine model type (bicycle, doubleInt, or dubinsCar)
+model_type = '';
+if isfield(active_data, 'modelType')
+    % If modelType is directly stored in the data (preferred)
+    model_type = active_data.modelType;
+elseif isfield(active_data, 'sim_params') && isfield(active_data.sim_params, 'modelType')
+    % Check if it's in the sim_params structure
+    model_type = active_data.sim_params.modelType;
 else
-    fprintf('Detected 2D standard bicycle model with yaw moment control\n');
-    if isfield(active_data, 'mzmax_values')
-        control_limits = active_data.mzmax_values;
+    % Try to infer model type from available fields and structure
+    if length(g.N) == 3 && isfield(active_data, 'dvmax_values')
+        model_type = 'bicycle';
+        is_steered_model = true;
+        control_type = 'dv';
+    elseif length(g.N) == 2 && isfield(active_data, 'mzmax_values')
+        model_type = 'bicycle';
+        is_steered_model = false;
         control_type = 'mz';
+    elseif isfield(active_data, 'acceleration_limits')
+        model_type = 'doubleInt';
+    elseif isfield(active_data, 'turning_limits') || isfield(active_data, 'speed')
+        model_type = 'dubinsCar';
     else
-        error('Could not find mzmax_values in data for standard model');
+        % Default to bicycle based on dimensions if we can't determine
+        is_steered_model = length(g.N) == 3;
+        model_type = 'bicycle';
+        control_type = is_steered_model;
+        warning('Could not determine model type explicitly; inferring as %s');
     end
+end
+
+%% Process model-specific parameters
+if strcmp(model_type, 'bicycle')
+    % Extract bicycle model parameters
+    velocities = active_data.velocities;
+    is_steered_model = length(g.N) == 3;
+    
+    if is_steered_model
+        if isfield(active_data, 'dvmax_values')
+            control_limits = active_data.dvmax_values;
+            control_type = 'dv';
+        else
+            error('Could not find dvmax_values in data for steered model');
+        end
+    else
+        if isfield(active_data, 'mzmax_values')
+            control_limits = active_data.mzmax_values;
+            control_type = 'mz';
+        else
+            error('Could not find mzmax_values in data for standard model');
+        end
+    end
+    
+    fprintf('Model detected: bicycle\n');
+    
+elseif strcmp(model_type, 'doubleInt')
+    % Extract Double Integrator parameters
+    if isfield(active_data, 'acceleration_limits')
+        control_limits = active_data.acceleration_limits;
+    elseif isfield(active_data, 'sim_params') && isfield(active_data.sim_params, 'acceleration_limits')
+        control_limits = active_data.sim_params.acceleration_limits;
+    else
+        control_limits = [1]; % Default
+        warning('Could not find acceleration limits; using default value: 1');
+    end
+    
+    % Set velocities to 1 for compatibility with the rest of the code
+    velocities = [1];
+    
+    % Check dimensions
+    if length(g.N) ~= 2
+        warning('Double Integrator should have 2 dimensions (position, velocity)');
+    end
+    
+    fprintf('Model detected: Double Integrator\n');
+    
+elseif strcmp(model_type, 'dubinsCar')
+    % Extract Dubins Car parameters
+    if isfield(active_data, 'turning_limits')
+        control_limits = active_data.turning_limits;
+    elseif isfield(active_data, 'sim_params') && isfield(active_data.sim_params, 'turning_limits')
+        control_limits = active_data.sim_params.turning_limits;
+    else
+        control_limits = [pi/4]; % Default
+        warning('Could not find turning limits; using default value: pi/4');
+    end
+    
+    % Get speed
+    if isfield(active_data, 'speed')
+        speed = active_data.speed;
+    elseif isfield(active_data, 'sim_params') && isfield(active_data.sim_params, 'speed')
+        speed = active_data.sim_params.speed;
+    else
+        speed = 5; % Default
+        warning('Could not find speed parameter; using default value: 5');
+    end
+    
+    % Set velocities to speed for compatibility with the rest of the code
+    velocities = [speed];
+    
+    % Check dimensions
+    if length(g.N) ~= 3
+        warning('Dubins Car should have 3 dimensions (x, y, theta)');
+    end
+    
+    fprintf('Model detected: Dubins Car with speed %.2f m/s\n', speed);
+else
+    error('Unsupported model type: %s', model_type);
 end
 
 % Validate indices
@@ -182,22 +277,29 @@ if strcmp(trajectory_type, 'brs') && use_frs_constraint && ~isempty(frs_folder)
         frs_data = load(frs_combined_file);
         
         % Find matching velocity and control limit in FRS data
-        v_idx = find(frs_data.velocities == velocities(velocity_idx), 1);
-        if isempty(v_idx)
-            % Find closest
-            [~, v_idx] = min(abs(frs_data.velocities - velocities(velocity_idx)));
-        end
-        
-        if strcmp(control_type, 'dv')
-            c_idx = find(frs_data.dvmax_values == control_limits(control_idx), 1);
-            if isempty(c_idx)
-                [~, c_idx] = min(abs(frs_data.dvmax_values - control_limits(control_idx)));
+        if strcmp(model_type, 'bicycle')
+            % For bicycle models
+            v_idx = find(frs_data.velocities == velocities(velocity_idx), 1);
+            if isempty(v_idx)
+                % Find closest
+                [~, v_idx] = min(abs(frs_data.velocities - velocities(velocity_idx)));
+            end
+            
+            if isfield(frs_data, 'dvmax_values')
+                c_idx = find(frs_data.dvmax_values == control_limits(control_idx), 1);
+                if isempty(c_idx)
+                    [~, c_idx] = min(abs(frs_data.dvmax_values - control_limits(control_idx)));
+                end
+            else
+                c_idx = find(frs_data.mzmax_values == control_limits(control_idx), 1);
+                if isempty(c_idx)
+                    [~, c_idx] = min(abs(frs_data.mzmax_values - control_limits(control_idx)));
+                end
             end
         else
-            c_idx = find(frs_data.mzmax_values == control_limits(control_idx), 1);
-            if isempty(c_idx)
-                [~, c_idx] = min(abs(frs_data.mzmax_values - control_limits(control_idx)));
-            end
+            % For other models, just use the first control limit
+            v_idx = 1;
+            c_idx = 1;
         end
         
         data_complement = frs_data.all_data{v_idx, c_idx};
@@ -215,21 +317,27 @@ elseif strcmp(trajectory_type, 'frs') && ~isempty(brs_folder)
         brs_data = load(brs_combined_file);
         
         % Find matching velocity and control limit
-        v_idx = find(brs_data.velocities == velocities(velocity_idx), 1);
-        if isempty(v_idx)
-            [~, v_idx] = min(abs(brs_data.velocities - velocities(velocity_idx)));
-        end
-        
-        if strcmp(control_type, 'dv')
-            c_idx = find(brs_data.dvmax_values == control_limits(control_idx), 1);
-            if isempty(c_idx)
-                [~, c_idx] = min(abs(brs_data.dvmax_values - control_limits(control_idx)));
+        if strcmp(model_type, 'bicycle')
+            v_idx = find(brs_data.velocities == velocities(velocity_idx), 1);
+            if isempty(v_idx)
+                [~, v_idx] = min(abs(brs_data.velocities - velocities(velocity_idx)));
+            end
+            
+            if isfield(brs_data, 'dvmax_values')
+                c_idx = find(brs_data.dvmax_values == control_limits(control_idx), 1);
+                if isempty(c_idx)
+                    [~, c_idx] = min(abs(brs_data.dvmax_values - control_limits(control_idx)));
+                end
+            else
+                c_idx = find(brs_data.mzmax_values == control_limits(control_idx), 1);
+                if isempty(c_idx)
+                    [~, c_idx] = min(abs(brs_data.mzmax_values - control_limits(control_idx)));
+                end
             end
         else
-            c_idx = find(brs_data.mzmax_values == control_limits(control_idx), 1);
-            if isempty(c_idx)
-                [~, c_idx] = min(abs(brs_data.mzmax_values - control_limits(control_idx)));
-            end
+            % For other models, just use the first control limit
+            v_idx = 1;
+            c_idx = 1;
         end
         
         data_complement = brs_data.all_data{v_idx, c_idx};
@@ -267,9 +375,13 @@ if visualize_reachable_sets
     viz_options.velocityIdx = velocity_idx;
     
     % Add model-specific options
-    if is_steered_model
+    if strcmp(model_type, 'bicycle') && is_steered_model
         % For 3D steered bicycle model
         viz_options.deltaSlices = [-0.1, 0, 0.1]; % Default slices
+    elseif strcmp(model_type, 'dubinsCar')
+        % For Dubins Car, show slices at different headings
+        viz_options.sliceDim = 3; % Slice along heading dimension
+        viz_options.slices = [0, pi/4, -pi/4]; % Different heading angles
     end
     
     try
@@ -278,6 +390,58 @@ if visualize_reachable_sets
             visualize_reachability_results(active_folder, viz_options);
         else
             warning('visualize_reachability_results function not found. Skipping reachable set visualization.');
+            
+            % Provide simple fallback visualization
+            figure('Name', 'Reachable Set Visualization');
+            
+            if strcmp(model_type, 'bicycle')
+                if is_steered_model
+                    % Show a slice for steered bicycle (gamma-beta plane at delta=0)
+                    delta_values = g.xs{3}(1, 1, :);
+                    center_idx = ceil(length(delta_values)/2);
+                    data_slice = squeeze(data_value_function(:,:,center_idx));
+                    target_slice = squeeze(data0(:,:,center_idx));
+                    
+                    contour(g.xs{2}(:,:,1)*180/pi, g.xs{1}(:,:,1)*180/pi, data_slice, [0 0], 'LineWidth', 2);
+                    hold on;
+                    contour(g.xs{2}(:,:,1)*180/pi, g.xs{1}(:,:,1)*180/pi, target_slice, [0 0], 'LineWidth', 2, 'LineStyle', '--', 'Color', 'g');
+                    xlabel('Sideslip Angle (degrees)');
+                    ylabel('Yaw Rate (degrees/s)');
+                    title(sprintf('BRS/FRS at Steering Angle = %.1f°', delta_values(center_idx)*180/pi));
+                else
+                    % For standard bicycle
+                    contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_value_function, [0 0], 'LineWidth', 2);
+                    hold on;
+                    contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data0, [0 0], 'LineWidth', 2, 'LineStyle', '--', 'Color', 'g');
+                    xlabel('Sideslip Angle (degrees)');
+                    ylabel('Yaw Rate (degrees/s)');
+                    title('BRS/FRS Boundary');
+                end
+            elseif strcmp(model_type, 'doubleInt')
+                % For Double Integrator
+                contour(g.xs{1}, g.xs{2}, data_value_function, [0 0], 'LineWidth', 2);
+                hold on;
+                contour(g.xs{1}, g.xs{2}, data0, [0 0], 'LineWidth', 2, 'LineStyle', '--', 'Color', 'g');
+                xlabel('Position');
+                ylabel('Velocity');
+                title('Double Integrator BRS/FRS Boundary');
+            elseif strcmp(model_type, 'dubinsCar')
+                % For Dubins Car, show slice at zero heading
+                theta_values = g.xs{3}(1, 1, :);
+                center_idx = ceil(length(theta_values)/2);
+                data_slice = squeeze(data_value_function(:,:,center_idx));
+                target_slice = squeeze(data0(:,:,center_idx));
+                
+                contour(g.xs{1}(:,:,1), g.xs{2}(:,:,1), data_slice, [0 0], 'LineWidth', 2);
+                hold on;
+                contour(g.xs{1}(:,:,1), g.xs{2}(:,:,1), target_slice, [0 0], 'LineWidth', 2, 'LineStyle', '--', 'Color', 'g');
+                xlabel('X Position');
+                ylabel('Y Position');
+                title(sprintf('BRS/FRS at Heading = %.1f°', theta_values(center_idx)*180/pi));
+            end
+            
+            grid on;
+            legend('Reachable Set', 'Target Set');
         end
     catch err
         warning('Error during reachable set visualization: %s', err.message);
@@ -286,46 +450,104 @@ end
 
 %% Compute or load trajectory
 if visualize_trajectory
-    % Set up dynamic system for trajectory computation
-    % Update vehicle parameters with selected velocity and control limits
-    params = base_params;
-    params(2) = velocities(velocity_idx);  % Set velocity
+    % Validate initial state dimension
+    if strcmp(model_type, 'bicycle') && is_steered_model && length(xinit) ~= 3
+        error('Initial state must have 3 dimensions [gamma; beta; delta] for steered bicycle model');
+    elseif strcmp(model_type, 'bicycle') && ~is_steered_model && length(xinit) ~= 2
+        error('Initial state must have 2 dimensions [gamma; beta] for standard bicycle model');
+    elseif strcmp(model_type, 'doubleInt') && length(xinit) ~= 2
+        error('Initial state must have 2 dimensions [position; velocity] for Double Integrator model');
+    elseif strcmp(model_type, 'dubinsCar') && length(xinit) ~= 3
+        error('Initial state must have 3 dimensions [x; y; theta] for Dubins Car model');
+    end
     
-    if is_steered_model
-        % For steered bicycle model
-        if strcmp(control_type, 'dv')
+    % Set up dynamic system for trajectory computation
+    if strcmp(model_type, 'bicycle')
+        % Update vehicle parameters with selected velocity and control limits
+        params = base_params;
+        params(2) = velocities(velocity_idx);  % Set velocity
+        
+        if is_steered_model
+            % For steered bicycle model
             params(7) = control_limits(control_idx);  % Set dv_max
             fprintf('Using steered bicycle model with Vx = %d m/s, dv_max = %.2f rad/s (%.1f deg/s)\n', ...
                 velocities(velocity_idx), control_limits(control_idx), control_limits(control_idx)*180/pi);
             
-            % Check initial state dimension
-            if length(xinit) ~= 3
-                error('Initial state must have 3 dimensions [gamma; beta; delta] for steered model');
-            end
-            
             % Create the dynamic system object
             dynSys = NonlinearBicycleSteered(xinit, params);
         else
-            error('Unexpected control type %s for steered model', control_type);
-        end
-    else
-        % For standard bicycle model
-        if strcmp(control_type, 'mz')
+            % For standard bicycle model
             params(7) = control_limits(control_idx);   % Set Mzmax
             params(8) = -control_limits(control_idx);  % Set Mzmin
             fprintf('Using standard bicycle model with Vx = %d m/s, Mzmax = %d N·m\n', ...
                 velocities(velocity_idx), control_limits(control_idx));
             
-            % Check initial state dimension
-            if length(xinit) ~= 2
-                error('Initial state must have 2 dimensions [gamma; beta] for standard model');
-            end
-            
             % Create the dynamic system object
             dynSys = NonlinearBicycle(xinit, params);
-        else
-            error('Unexpected control type %s for standard model', control_type);
         end
+    elseif strcmp(model_type, 'doubleInt')
+        % For Double Integrator
+        acc_limit = control_limits(control_idx);
+        urange = [-acc_limit, acc_limit];
+        
+        % Get dimensions and disturbance if available
+        if isfield(active_data, 'dimensions')
+            dims = active_data.dimensions;
+        elseif isfield(active_data, 'sim_params') && isfield(active_data.sim_params, 'dimensions')
+            dims = active_data.sim_params.dimensions;
+        else
+            dims = 1:2;  % Default dimensions
+        end
+        
+        if isfield(active_data, 'disturbance_range')
+            drange = active_data.disturbance_range;
+        elseif isfield(active_data, 'sim_params') && isfield(active_data.sim_params, 'disturbance_range')
+            drange = active_data.sim_params.disturbance_range;
+        else
+            drange = [0, 0];  % Default - no disturbance
+        end
+        
+        fprintf('Using Double Integrator model with acceleration limits = [%.2f, %.2f]\n', -acc_limit, acc_limit);
+        
+        % Create the Double Integrator object
+        dynSys = DoubleInt(xinit, urange, drange, dims);
+    elseif strcmp(model_type, 'dubinsCar')
+        % For Dubins Car
+        % Get turning limit
+        turn_limit = control_limits(control_idx);
+        wRange = [-turn_limit, turn_limit];
+        
+        % Get speed
+        if isfield(active_data, 'speed')
+            speed = active_data.speed;
+        elseif isfield(active_data, 'sim_params') && isfield(active_data.sim_params, 'speed')
+            speed = active_data.sim_params.speed;
+        else
+            speed = velocities(velocity_idx);  % Use stored velocity as speed
+        end
+        
+        % Get dimensions and disturbance if available
+        if isfield(active_data, 'dimensions')
+            dims = active_data.dimensions;
+        elseif isfield(active_data, 'sim_params') && isfield(active_data.sim_params, 'dimensions')
+            dims = active_data.sim_params.dimensions;
+        else
+            dims = 1:3;  % Default dimensions
+        end
+        
+        if isfield(active_data, 'disturbance_range')
+            drange = active_data.disturbance_range;
+        elseif isfield(active_data, 'sim_params') && isfield(active_data.sim_params, 'disturbance_range')
+            drange = active_data.sim_params.disturbance_range;
+        else
+            drange = {[0;0;0], [0;0;0]};  % Default - no disturbance
+        end
+        
+        fprintf('Using Dubins Car model with speed = %.2f m/s, turning limits = [%.2f, %.2f] rad/s\n', ...
+            speed, -turn_limit, turn_limit);
+        
+        % Create the Dubins Car object
+        dynSys = DubinsCar(xinit, wRange, speed, drange, dims);
     end
     
     % If this is an FRS trajectory, validate that initial state is in/near target set
@@ -335,13 +557,6 @@ if visualize_trajectory
         if target_value > 0
             warning('For FRS trajectories, initial state should be in the target set.');
             fprintf('Current initial state has target set value: %.4f\n', target_value);
-            
-            % If not in target, try to find a close point (optional, commented out)
-            % [closest_idx, min_value] = find_closest_to_target(g, data0, xinit);
-            % if min_value <= 0
-            %    xinit = get_state_from_index(g, closest_idx);
-            %    fprintf('Adjusted initial state to be in target set.\n');
-            % end
         end
     end
     
@@ -357,12 +572,17 @@ if visualize_trajectory
     % Compute or load trajectory
     if compute_new_trajectory
         fprintf('Computing trajectory for initial state: ');
-        if is_steered_model
+        if strcmp(model_type, 'bicycle') && is_steered_model
             fprintf('[%.1f°/s, %.1f°, %.1f°]...\n', ...
                 xinit(1)*180/pi, xinit(2)*180/pi, xinit(3)*180/pi);
-        else
+        elseif strcmp(model_type, 'bicycle')
             fprintf('[%.1f°/s, %.1f°]...\n', ...
                 xinit(1)*180/pi, xinit(2)*180/pi);
+        elseif strcmp(model_type, 'doubleInt')
+            fprintf('[%.2f, %.2f]...\n', xinit(1), xinit(2));
+        elseif strcmp(model_type, 'dubinsCar')
+            fprintf('[%.2f, %.2f, %.1f°]...\n', ...
+                xinit(1), xinit(2), xinit(3)*180/pi);
         end
         
         % Check if initial state is valid for the selected trajectory type
@@ -382,22 +602,24 @@ if visualize_trajectory
         
         % Select trajectory computation method
         if strcmp(trajectory_method, 'legacy')
-            % Use legacy computation methods
-            % Note: Legacy methods may not fully support FRS trajectories
+            % Legacy trajectory computation methods depend on model type
+            fprintf('Using legacy %s method...\n', trajectory_method);
+            
+            % Legacy methods may not fully support FRS trajectories or all model types
             if strcmp(trajectory_type, 'frs')
                 warning('Legacy methods may not fully support FRS trajectories. Consider using optimized methods.');
             end
             
-            if is_steered_model
-                fprintf('Using legacy steered trajectory computation method...\n');
+            % Each model type needs specific legacy computation handling
+            if strcmp(model_type, 'bicycle') && is_steered_model
+                % Steered bicycle model
                 try
-                    % Modify for FRS trajectories if necessary
                     legacy_opts = struct();
                     legacy_opts.velocityIdx = velocity_idx;
                     legacy_opts.dvMaxIdx = control_idx;
                     legacy_opts.visualize = false;
                     legacy_opts.maxTime = max_time;
-                    legacy_opts.uMode = uMode;  % Set control mode based on trajectory type
+                    legacy_opts.uMode = uMode;
                     
                     if strcmp(trajectory_type, 'brs') && use_frs_constraint
                         legacy_opts.useFRS = true;
@@ -411,16 +633,15 @@ if visualize_trajectory
                 catch err
                     error('Error in legacy trajectory computation: %s', err.message);
                 end
-            else
-                fprintf('Using legacy standard trajectory computation method...\n');
+            elseif strcmp(model_type, 'bicycle')
+                % Standard bicycle model
                 try
-                    % Assuming a function similar to compute_trajectory_from_folders for standard model
                     legacy_opts = struct();
                     legacy_opts.velocityIdx = velocity_idx;
                     legacy_opts.mzMaxIdx = control_idx;
                     legacy_opts.visualize = false;
                     legacy_opts.maxTime = max_time;
-                    legacy_opts.uMode = uMode;  % Set control mode based on trajectory type
+                    legacy_opts.uMode = uMode;
                     
                     if strcmp(trajectory_type, 'brs') && use_frs_constraint
                         legacy_opts.useFRS = true;
@@ -434,9 +655,39 @@ if visualize_trajectory
                 catch err
                     error('Error in legacy trajectory computation: %s', err.message);
                 end
+            else
+                % Legacy methods don't explicitly support other models
+                warning('Legacy trajectory computation methods may not support %s model. Using computeOptTraj instead.', model_type);
+                
+                try
+                    % Use bare computeOptTraj function
+                    TrajextraArgs = struct();
+                    TrajextraArgs.uMode = uMode;
+                    TrajextraArgs.visualize = false;
+                    
+                    % Flip data time points for backward direction
+                    dataTraj = flip(data_value_function_full, length(g.N) + 1);
+                    tau_reversed = flip(tau);
+                    
+                    [traj, traj_tau, traj_u] = computeOptTraj(g, dataTraj, tau_reversed, dynSys, TrajextraArgs);
+                    
+                    % Create a basic metrics structure
+                    metrics = struct();
+                    metrics.time_to_target = traj_tau(end) - traj_tau(1);
+                    metrics.final_set_value = eval_u(g, data0, traj(:,end));
+                    metrics.control_energy = sum(sum(traj_u.^2));
+                    
+                    if strcmp(trajectory_type, 'brs')
+                        metrics.reached_target = (metrics.final_set_value <= 0);
+                    else
+                        metrics.escaped_target = (metrics.final_set_value > 0);
+                    end
+                catch err
+                    error('Error in computeOptTraj: %s', err.message);
+                end
             end
         else
-            % Use the new optimized trajectory computation
+            % Use the optimized trajectory computation
             fprintf('Using optimized trajectory computation with method: %s\n', trajectory_method);
             
             % Check if computeOptimizedTrajectory function exists
@@ -447,7 +698,7 @@ if visualize_trajectory
             % Setup options for optimized computation
             opt_options = struct();
             opt_options.method = trajectory_method;
-            opt_options.uMode = uMode;  % Set based on trajectory type (min for BRS, max for FRS)
+            opt_options.uMode = uMode;
             opt_options.maxTime = max_time;
             opt_options.dt = (tau(2) - tau(1))/5;  % Use smaller time step for better integration
             opt_options.visualize = false;
@@ -467,8 +718,6 @@ if visualize_trajectory
             
             % Handle time direction differently for FRS trajectories
             if strcmp(trajectory_type, 'frs')
-                % For FRS, we may need to handle time differently
-                % (may depend on specific implementation)
                 opt_options.reverseFRS = true;  % Flag indicating this is an FRS trajectory
             end
             
@@ -482,17 +731,31 @@ if visualize_trajectory
         
         % Save computed trajectory
         save(trajectory_file, 'traj', 'traj_tau', 'traj_u', 'metrics', 'xinit', 'active_folder', ...
-            'trajectory_method', 'trajectory_type', 'params', 'velocity_idx', 'control_idx');
+            'trajectory_method', 'trajectory_type', 'params', 'velocity_idx', 'control_idx', 'model_type');
         fprintf('Trajectory computed and saved to %s\n', trajectory_file);
     else
         % Load a previously computed trajectory
         if exist(trajectory_file, 'file')
             fprintf('Loading trajectory from %s\n', trajectory_file);
-            load(trajectory_file, 'traj', 'traj_tau', 'traj_u', 'metrics', 'xinit', 'trajectory_type');
+            load(trajectory_file, 'traj', 'traj_tau', 'traj_u', 'metrics', 'xinit', 'trajectory_type', 'model_type');
             
             % Check if trajectory file contains the required data
             if ~exist('traj', 'var') || ~exist('traj_tau', 'var')
                 error('Trajectory file does not contain required data');
+            end
+            
+            % If model_type isn't in the saved file, try to infer it
+            if ~exist('model_type', 'var')
+                % Try to infer model type from trajectory dimensions
+                if size(traj, 1) == 3 && ~isempty(strfind(trajectory_file, 'dubins'))
+                    model_type = 'dubinsCar';
+                elseif size(traj, 1) == 2 && ~isempty(strfind(trajectory_file, 'double'))
+                    model_type = 'doubleInt';
+                else
+                    % Default to bicycle model
+                    model_type = 'bicycle';
+                    is_steered_model = (size(traj, 1) == 3);
+                end
             end
         else
             error('Trajectory file not found: %s', trajectory_file);
@@ -544,201 +807,368 @@ if visualize_trajectory
     fprintf('\nVisualizing %s trajectory...\n', upper(trajectory_type));
     
     try
-        % First visualize in state space
-        figure_title = sprintf('%s Trajectory in State Space', upper(trajectory_type));
-        figure('Name', figure_title);
-        
-        if is_steered_model
-            % For 3D model, show slices at the steering angle
-            delta_values = g.xs{3}(1, 1, :);
-            center_idx = ceil(length(delta_values)/2);
-            
-            % Find the index closest to the initial steering angle
-            [~, delta_idx] = min(abs(delta_values - xinit(3)));
-            
-            % Extract 2D slices
-            data_slice = squeeze(data_value_function(:,:,delta_idx));
-            target_slice = squeeze(data0(:,:,center_idx));
-            
-            % Plot the slice
-            xs1_deg = g.xs{1}(:,:,1) * 180/pi;  % yaw rate
-            xs2_deg = g.xs{2}(:,:,1) * 180/pi;  % sideslip angle
-            
-            hold on;
-            [~, h1] = contour(xs2_deg, xs1_deg, data_slice, [0, 0], 'LineWidth', 2, 'Color', 'k');
-            [~, h2] = contour(xs2_deg, xs1_deg, target_slice, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
-            
-            % Also plot BRS data if this is an FRS trajectory and we have BRS data
-            if strcmp(trajectory_type, 'frs') && ~isempty(data_complement)
-                brs_slice = squeeze(data_complement(:,:,delta_idx));
-                [~, h_brs] = contour(xs2_deg, xs1_deg, brs_slice, [0, 0], 'LineWidth', 2, 'Color', 'b', 'LineStyle', ':');
-            end
-            
-            % Convert trajectory to degrees for plotting
-            traj_deg = traj * 180/pi;
-            
-            % Plot trajectory in state space (sideslip vs yaw rate)
-            h3 = plot(traj_deg(2,:), traj_deg(1,:), 'b-', 'LineWidth', 2);
-            h4 = plot(traj_deg(2,1), traj_deg(1,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
-            
-            % For BRS trajectories, final point is "target reached"
-            % For FRS trajectories, final point is "escaped from target"
-            if strcmp(trajectory_type, 'brs')
-                h5 = plot(traj_deg(2,end), traj_deg(1,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
-            else
-                h5 = plot(traj_deg(2,end), traj_deg(1,end), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
-            end
-            
-            xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
-            ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
-            
-            if strcmp(trajectory_type, 'brs')
-                main_set_name = 'BRS';
-                title(sprintf('BRS Trajectory in State Space (δ = %.1f°)', delta_values(delta_idx)*180/pi), 'FontSize', 14);
-                if ~isempty(data_complement)
-                    legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
-                else
-                    legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
-                end
-            else % FRS
-                main_set_name = 'FRS';
-                title(sprintf('FRS Trajectory in State Space (δ = %.1f°)', delta_values(delta_idx)*180/pi), 'FontSize', 14);
-                if ~isempty(data_complement)
-                    legend([h1, h2, h_brs, h3, h4, h5], 'FRS Boundary', 'Target Set', 'BRS Boundary', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
-                else
-                    legend([h1, h2, h3, h4, h5], 'FRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
-                end
-            end
-            
-            grid on;
-            
-            % Also create a figure showing the steering angle over time
-            figure('Name', 'Steering Angle vs Time');
-            plot(traj_tau, traj_deg(3,:), 'r-', 'LineWidth', 2);
-            xlabel('Time (s)', 'FontSize', 12);
-            ylabel('Steering Angle (degrees)', 'FontSize', 12);
-            title(sprintf('%s Trajectory: Steering Angle vs Time', main_set_name), 'FontSize', 14);
-            grid on;
-            
+        % Create figure title based on model type
+        if strcmp(model_type, 'bicycle')
+            figure_title = sprintf('%s Trajectory in State Space (%s Model)', upper(trajectory_type));
+        elseif strcmp(model_type, 'doubleInt')
+            figure_title = sprintf('%s Trajectory in State Space (Double Integrator)', upper(trajectory_type));
+        elseif strcmp(model_type, 'dubinsCar')
+            figure_title = sprintf('%s Trajectory in State Space (Dubins Car)', upper(trajectory_type));
         else
-            % For 2D model
-            hold on;
-            [~, h1] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_value_function, [0, 0], 'LineWidth', 2, 'Color', 'k');
-            [~, h2] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data0, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
-            
-            % Also plot BRS data if this is an FRS trajectory and we have BRS data
-            if strcmp(trajectory_type, 'frs') && ~isempty(data_complement)
-                [~, h_brs] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_complement, [0, 0], 'LineWidth', 2, 'Color', 'b', 'LineStyle', ':');
-            end
-            
-            % Convert trajectory to degrees for plotting
-            traj_deg = traj * 180/pi;
-            
-            % Plot trajectory
-            h3 = plot(traj_deg(2,:), traj_deg(1,:), 'b-', 'LineWidth', 2);
-            h4 = plot(traj_deg(2,1), traj_deg(1,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
-            
-            % For BRS trajectories, final point is "target reached"
-            % For FRS trajectories, final point is "escaped from target"
-            if strcmp(trajectory_type, 'brs')
-                h5 = plot(traj_deg(2,end), traj_deg(1,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
-            else
-                h5 = plot(traj_deg(2,end), traj_deg(1,end), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
-            end
-            
-            xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
-            ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
-            
-            if strcmp(trajectory_type, 'brs')
-                main_set_name = 'BRS';
-                title('BRS Trajectory in State Space', 'FontSize', 14);
-                if ~isempty(data_complement)
-                    legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
-                else
-                    legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
-                end
-            else % FRS
-                main_set_name = 'FRS';
-                title('FRS Trajectory in State Space', 'FontSize', 14);
-                if ~isempty(data_complement)
-                    legend([h1, h2, h_brs, h3, h4, h5], 'FRS Boundary', 'Target Set', 'BRS Boundary', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
-                else
-                    legend([h1, h2, h3, h4, h5], 'FRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
-                end
-            end
-            
-            grid on;
+            figure_title = sprintf('%s Trajectory in State Space', upper(trajectory_type));
         end
         
+        figure('Name', figure_title);
+        
+        % Visualization based on model type
+        if strcmp(model_type, 'bicycle')
+            if is_steered_model
+                % For 3D model, show slices at the steering angle
+                delta_values = g.xs{3}(1, 1, :);
+                center_idx = ceil(length(delta_values)/2);
+                
+                % Find the index closest to the initial steering angle
+                [~, delta_idx] = min(abs(delta_values - xinit(3)));
+                
+                % Extract 2D slices
+                data_slice = squeeze(data_value_function(:,:,delta_idx));
+                target_slice = squeeze(data0(:,:,center_idx));
+                
+                % Plot the slice
+                xs1_deg = g.xs{1}(:,:,1) * 180/pi;  % yaw rate
+                xs2_deg = g.xs{2}(:,:,1) * 180/pi;  % sideslip angle
+                
+                hold on;
+                [~, h1] = contour(xs2_deg, xs1_deg, data_slice, [0, 0], 'LineWidth', 2, 'Color', 'k');
+                [~, h2] = contour(xs2_deg, xs1_deg, target_slice, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                
+                % Also plot BRS data if this is an FRS trajectory and we have BRS data
+                if strcmp(trajectory_type, 'frs') && ~isempty(data_complement)
+                    brs_slice = squeeze(data_complement(:,:,delta_idx));
+                    [~, h_brs] = contour(xs2_deg, xs1_deg, brs_slice, [0, 0], 'LineWidth', 2, 'Color', 'b', 'LineStyle', ':');
+                end
+                
+                % Convert trajectory to degrees for plotting
+                traj_deg = traj * 180/pi;
+                
+                % Plot trajectory in state space (sideslip vs yaw rate)
+                h3 = plot(traj_deg(2,:), traj_deg(1,:), 'b-', 'LineWidth', 2);
+                h4 = plot(traj_deg(2,1), traj_deg(1,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
+                
+                % For BRS trajectories, final point is "target reached"
+                % For FRS trajectories, final point is "escaped from target"
+                if strcmp(trajectory_type, 'brs')
+                    h5 = plot(traj_deg(2,end), traj_deg(1,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
+                else
+                    h5 = plot(traj_deg(2,end), traj_deg(1,end), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+                end
+                
+                xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
+                ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
+                
+                if strcmp(trajectory_type, 'brs')
+                    main_set_name = 'BRS';
+                    title(sprintf('BRS Trajectory in State Space (δ = %.1f°)', delta_values(delta_idx)*180/pi), 'FontSize', 14);
+                    if ~isempty(data_complement)
+                        legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+                    else
+                        legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+                    end
+                else % FRS
+                    main_set_name = 'FRS';
+                    title(sprintf('FRS Trajectory in State Space (δ = %.1f°)', delta_values(delta_idx)*180/pi), 'FontSize', 14);
+                    if ~isempty(data_complement)
+                        legend([h1, h2, h_brs, h3, h4, h5], 'FRS Boundary', 'Target Set', 'BRS Boundary', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+                    else
+                        legend([h1, h2, h3, h4, h5], 'FRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+                    end
+                end
+                
+                grid on;
+                
+                % Also create a figure showing the steering angle over time
+                figure('Name', 'Steering Angle vs Time');
+                plot(traj_tau, traj_deg(3,:), 'r-', 'LineWidth', 2);
+                xlabel('Time (s)', 'FontSize', 12);
+                ylabel('Steering Angle (degrees)', 'FontSize', 12);
+                title(sprintf('%s Trajectory: Steering Angle vs Time', main_set_name), 'FontSize', 14);
+                grid on;
+                
+            else
+                % For 2D model
+                hold on;
+                [~, h1] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_value_function, [0, 0], 'LineWidth', 2, 'Color', 'k');
+                [~, h2] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data0, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                
+                % Also plot BRS data if this is an FRS trajectory and we have BRS data
+                if strcmp(trajectory_type, 'frs') && ~isempty(data_complement)
+                    [~, h_brs] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_complement, [0, 0], 'LineWidth', 2, 'Color', 'b', 'LineStyle', ':');
+                end
+                
+                % Convert trajectory to degrees for plotting
+                traj_deg = traj * 180/pi;
+                
+                % Plot trajectory
+                h3 = plot(traj_deg(2,:), traj_deg(1,:), 'b-', 'LineWidth', 2);
+                h4 = plot(traj_deg(2,1), traj_deg(1,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
+                
+                % For BRS trajectories, final point is "target reached"
+                % For FRS trajectories, final point is "escaped from target"
+                if strcmp(trajectory_type, 'brs')
+                    h5 = plot(traj_deg(2,end), traj_deg(1,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
+                else
+                    h5 = plot(traj_deg(2,end), traj_deg(1,end), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+                end
+                
+                xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
+                ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
+                
+                if strcmp(trajectory_type, 'brs')
+                    main_set_name = 'BRS';
+                    title('BRS Trajectory in State Space', 'FontSize', 14);
+                    if ~isempty(data_complement)
+                        legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+                    else
+                        legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+                    end
+                else % FRS
+                    main_set_name = 'FRS';
+                    title('FRS Trajectory in State Space', 'FontSize', 14);
+                    if ~isempty(data_complement)
+                        legend([h1, h2, h_brs, h3, h4, h5], 'FRS Boundary', 'Target Set', 'BRS Boundary', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+                    else
+                        legend([h1, h2, h3, h4, h5], 'FRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+                    end
+                end
+                
+                grid on;
+            end
+        elseif strcmp(model_type, 'doubleInt')
+            % Double Integrator visualization
+            hold on;
+            [~, h1] = contour(g.xs{1}, g.xs{2}, data_value_function, [0, 0], 'LineWidth', 2, 'Color', 'k');
+            [~, h2] = contour(g.xs{1}, g.xs{2}, data0, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+            
+            % Plot trajectory
+            h3 = plot(traj(1,:), traj(2,:), 'b-', 'LineWidth', 2);
+            h4 = plot(traj(1,1), traj(2,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
+            
+            % For BRS trajectories, final point is "target reached"
+            % For FRS trajectories, final point is "escaped from target"
+            if strcmp(trajectory_type, 'brs')
+                h5 = plot(traj(1,end), traj(2,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
+            else
+                h5 = plot(traj(1,end), traj(2,end), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+            end
+            
+            xlabel('Position', 'FontSize', 12);
+            ylabel('Velocity', 'FontSize', 12);
+            
+            if strcmp(trajectory_type, 'brs')
+                main_set_name = 'BRS';
+                title('Double Integrator: BRS Trajectory', 'FontSize', 14);
+                legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+            else % FRS
+                main_set_name = 'FRS';
+                title('Double Integrator: FRS Trajectory', 'FontSize', 14);
+                legend([h1, h2, h3, h4, h5], 'FRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+            end
+            
+            grid on;
+            
+        elseif strcmp(model_type, 'dubinsCar')
+            % Dubins Car visualization
+            if length(g.N) == 3
+                % 3D state space, show 2D projections
+                
+                % Find the theta slice closest to initial heading
+                theta_values = g.xs{3}(1, 1, :);
+                [~, theta_idx] = min(abs(theta_values - xinit(3)));
+                
+                % Extract 2D slice at this heading
+                data_slice = squeeze(data_value_function(:,:,theta_idx));
+                target_slice = squeeze(data0(:,:,theta_idx));
+                
+                % Plot the slice
+                hold on;
+                [~, h1] = contour(g.xs{1}(:,:,1), g.xs{2}(:,:,1), data_slice, [0, 0], 'LineWidth', 2, 'Color', 'k');
+                [~, h2] = contour(g.xs{1}(:,:,1), g.xs{2}(:,:,1), target_slice, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                
+                % Plot trajectory (x-y projection)
+                h3 = plot(traj(1,:), traj(2,:), 'b-', 'LineWidth', 2);
+                h4 = plot(traj(1,1), traj(2,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
+                
+                if strcmp(trajectory_type, 'brs')
+                    h5 = plot(traj(1,end), traj(2,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
+                else
+                    h5 = plot(traj(1,end), traj(2,end), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+                end
+                
+                xlabel('X Position', 'FontSize', 12);
+                ylabel('Y Position', 'FontSize', 12);
+                
+                if strcmp(trajectory_type, 'brs')
+                    main_set_name = 'BRS';
+                    title(sprintf('Dubins Car: BRS Trajectory (θ = %.1f°)', theta_values(theta_idx)*180/pi), 'FontSize', 14);
+                    legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+                else % FRS
+                    main_set_name = 'FRS';
+                    title(sprintf('Dubins Car: FRS Trajectory (θ = %.1f°)', theta_values(theta_idx)*180/pi), 'FontSize', 14);
+                    legend([h1, h2, h3, h4, h5], 'FRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+                end
+                
+                grid on;
+                
+                % Also create a figure showing the heading angle over time
+                figure('Name', 'Heading Angle vs Time');
+                plot(traj_tau, traj(3,:)*180/pi, 'r-', 'LineWidth', 2);
+                xlabel('Time (s)', 'FontSize', 12);
+                ylabel('Heading Angle (degrees)', 'FontSize', 12);
+                title(sprintf('Dubins Car: %s Trajectory - Heading vs Time', main_set_name), 'FontSize', 14);
+                grid on;
+            else
+                % 2D state space (simplified model)
+                hold on;
+                [~, h1] = contour(g.xs{1}, g.xs{2}, data_value_function, [0, 0], 'LineWidth', 2, 'Color', 'k');
+                [~, h2] = contour(g.xs{1}, g.xs{2}, data0, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                
+                % Plot trajectory
+                h3 = plot(traj(1,:), traj(2,:), 'b-', 'LineWidth', 2);
+                h4 = plot(traj(1,1), traj(2,1), 'bo', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
+                
+                if strcmp(trajectory_type, 'brs')
+                    h5 = plot(traj(1,end), traj(2,end), 'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
+                else
+                    h5 = plot(traj(1,end), traj(2,end), 'ro', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+                end
+                
+                xlabel('X Position', 'FontSize', 12);
+                ylabel('Y Position', 'FontSize', 12);
+                
+                if strcmp(trajectory_type, 'brs')
+                    main_set_name = 'BRS';
+                    title('Dubins Car: BRS Trajectory', 'FontSize', 14);
+                    legend([h1, h2, h3, h4, h5], 'BRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Target Reached)', 'Location', 'best');
+                else % FRS
+                    main_set_name = 'FRS';
+                    title('Dubins Car: FRS Trajectory', 'FontSize', 14);
+                    legend([h1, h2, h3, h4, h5], 'FRS Boundary', 'Target Set', 'Trajectory', 'Initial State', 'Final State (Escaped)', 'Location', 'best');
+                end
+                
+                grid on;
+            end
+        end
+
         % Also visualize control inputs
         figure('Name', 'Control Inputs');
         plot(traj_tau(1:end-1), traj_u, 'r-', 'LineWidth', 2);
         xlabel('Time (s)', 'FontSize', 12);
         
-        if is_steered_model
-            ylabel('Steering Rate (rad/s)', 'FontSize', 12);
-            title(sprintf('%s Trajectory: Steering Rate Control Input', main_set_name), 'FontSize', 14);
-        else
-            ylabel('Yaw Moment (N·m)', 'FontSize', 12);
-            title(sprintf('%s Trajectory: Yaw Moment Control Input', main_set_name), 'FontSize', 14);
+        if strcmp(model_type, 'bicycle')
+            if is_steered_model
+                ylabel('Steering Rate (rad/s)', 'FontSize', 12);
+                title(sprintf('%s Trajectory: Steering Rate Control Input', main_set_name), 'FontSize', 14);
+            else
+                ylabel('Yaw Moment (N·m)', 'FontSize', 12);
+                title(sprintf('%s Trajectory: Yaw Moment Control Input', main_set_name), 'FontSize', 14);
+            end
+        elseif strcmp(model_type, 'doubleInt')
+            ylabel('Acceleration (m/s²)', 'FontSize', 12);
+            title(sprintf('Double Integrator: %s Trajectory - Acceleration Control', main_set_name), 'FontSize', 14);
+        elseif strcmp(model_type, 'dubinsCar')
+            ylabel('Turning Rate (rad/s)', 'FontSize', 12);
+            title(sprintf('Dubins Car: %s Trajectory - Turning Rate Control', main_set_name), 'FontSize', 14);
         end
         grid on;
         
-        % Visualize car trajectory if possible
+        % Visualize physical trajectory if possible
         if exist('visualizeCarTrajectory', 'file')
-            fprintf('Visualizing physical car trajectory...\n');
+            fprintf('Visualizing physical trajectory...\n');
             
-            % Get the velocity for this simulation
-            vx = velocities(velocity_idx);
-            
-            try
-                % Choose border color based on trajectory type
-                if strcmp(trajectory_type, 'brs')
-                    % Use blue scheme for BRS
-                    border_color = [0, 0, 0.8];  % Dark blue
+            if strcmp(model_type, 'bicycle') || strcmp(model_type, 'dubinsCar')
+                % Get the velocity for this simulation
+                if strcmp(model_type, 'bicycle')
+                    vx = velocities(velocity_idx);
                 else
-                    % Use red scheme for FRS
-                    border_color = [0.8, 0, 0];  % Dark red
-                end
-                
-                visualizeCarTrajectory(traj, traj_tau, g, data_value_function, data0, vx, ...
-                    'x0', 0, 'y0', 0, 'psi0', 0, ...
-                    'saveVideo', save_video, ...
-                    'videoFile', video_file, ...
-                    'carLength', car_length, ...
-                    'carWidth', car_width, ...
-                    'wheelBase', wheel_base, ...
-                    'gridSize', grid_size, ...
-                    'playSpeed', 1.0, ...
-                    'isBRS', strcmp(trajectory_type, 'brs')); % Add flag indicating if BRS or FRS
-                
-                if save_video
-                    fprintf('Car trajectory visualization saved to: %s\n', video_file);
-                end
-            catch err
-                warning('Error in car trajectory visualization: %s', err.message);
-                
-                % Try again without video if the error is video-related
-                if save_video && (contains(err.message, 'VideoWriter') || contains(err.message, 'video'))
-                    fprintf('Attempting visualization without video recording...\n');
-                    try
-                        visualizeCarTrajectory(traj, traj_tau, g, data_value_function, data0, vx, ...
-                            'x0', 0, 'y0', 0, 'psi0', 0, ...
-                            'saveVideo', false, ...
-                            'carLength', car_length, ...
-                            'carWidth', car_width, ...
-                            'wheelBase', wheel_base, ...
-                            'gridSize', grid_size, ...
-                            'playSpeed', 1.0, ...
-                            'isBRS', strcmp(trajectory_type, 'brs')); % Add flag indicating if BRS or FRS
-                        fprintf('Car trajectory visualization completed without video recording.\n');
-                    catch inner_err
-                        warning('Visualization failed: %s', inner_err.message);
+                    % For Dubins Car, use the speed parameter
+                    if isfield(active_data, 'speed')
+                        vx = active_data.speed;
+                    elseif isfield(active_data, 'sim_params') && isfield(active_data.sim_params, 'speed')
+                        vx = active_data.sim_params.speed;
+                    else
+                        vx = velocities(velocity_idx);  % Fallback to velocity
                     end
                 end
+                
+                try
+                    % Choose border color based on trajectory type
+                    if strcmp(trajectory_type, 'brs')
+                        % Use blue scheme for BRS
+                        border_color = [0, 0, 0.8];  % Dark blue
+                    else
+                        % Use red scheme for FRS
+                        border_color = [0.8, 0, 0];  % Dark red
+                    end
+                    
+                    visualizeCarTrajectory(traj, traj_tau, g, data_value_function, data0, vx, ...
+                        'x0', 0, 'y0', 0, 'psi0', 0, ...
+                        'saveVideo', save_video, ...
+                        'videoFile', video_file, ...
+                        'carLength', car_length, ...
+                        'carWidth', car_width, ...
+                        'wheelBase', wheel_base, ...
+                        'gridSize', grid_size, ...
+                        'playSpeed', 1.0, ...
+                        'isBRS', strcmp(trajectory_type, 'brs')); % Add flag indicating if BRS or FRS
+                    
+                    if save_video
+                        fprintf('Car trajectory visualization saved to: %s\n', video_file);
+                    end
+                catch err
+                    warning('Error in car trajectory visualization: %s', err.message);
+                    
+                    % Try again without video if the error is video-related
+                    if save_video && (contains(err.message, 'VideoWriter') || contains(err.message, 'video'))
+                        fprintf('Attempting visualization without video recording...\n');
+                        try
+                            visualizeCarTrajectory(traj, traj_tau, g, data_value_function, data0, vx, ...
+                                'x0', 0, 'y0', 0, 'psi0', 0, ...
+                                'saveVideo', false, ...
+                                'carLength', car_length, ...
+                                'carWidth', car_width, ...
+                                'wheelBase', wheel_base, ...
+                                'gridSize', grid_size, ...
+                                'playSpeed', 1.0, ...
+                                'isBRS', strcmp(trajectory_type, 'brs'));
+                            fprintf('Car trajectory visualization completed without video recording.\n');
+                        catch inner_err
+                            warning('Visualization failed: %s', inner_err.message);
+                        end
+                    end
+                end
+            elseif strcmp(model_type, 'doubleInt')
+                % For Double Integrator, we could implement a simple particle visualization
+                % But this would need a custom visualization function
+                fprintf('Physical visualization for Double Integrator not implemented yet.\n');
+                
+                % Simple alternative: plot position vs time and phase portrait
+                figure('Name', 'Double Integrator Position vs Time');
+                subplot(2,1,1);
+                plot(traj_tau, traj(1,:), 'b-', 'LineWidth', 2);
+                xlabel('Time (s)', 'FontSize', 12);
+                ylabel('Position', 'FontSize', 12);
+                title('Double Integrator: Position vs Time', 'FontSize', 14);
+                grid on;
+                
+                subplot(2,1,2);
+                plot(traj_tau, traj(2,:), 'r-', 'LineWidth', 2);
+                xlabel('Time (s)', 'FontSize', 12);
+                ylabel('Velocity', 'FontSize', 12);
+                title('Double Integrator: Velocity vs Time', 'FontSize', 14);
+                grid on;
             end
         else
-            warning('visualizeCarTrajectory function not found. Skipping physical car visualization.');
+            warning('visualizeCarTrajectory function not found. Skipping physical trajectory visualization.');
         end
         
     catch err
