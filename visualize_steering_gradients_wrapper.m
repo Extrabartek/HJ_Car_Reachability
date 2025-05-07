@@ -9,7 +9,7 @@ function visualize_steering_gradients_wrapper()
 
 %% Path to results folder
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-results_folder = fullfile(main_results_folder, 'steered_brs_results_20250501_103706_vx20-20_dvmax40-40');
+results_folder = fullfile(main_results_folder, 'steered_brs_results_20250502_155507_vx20-20_dvmax40-40');
 
 %% Data selection
 velocity_idx = 1;        % Index of velocity to use
@@ -18,7 +18,7 @@ control_idx = 1;         % Index of control limit to use
 %% Visualization parameters
 arrow_density = [15, 15];  % Number of arrows in each dimension [beta, gamma]
 arrow_scale = 100.5;         % Scale factor for arrow size
-delta_slices = [-5, 0, 5]; % Steering angle slices to visualize (in degrees)
+delta_slices = [3.8]; % Steering angle slices to visualize (in degrees)
 show_arrows = false;        % Set to true to show control direction arrows
 color_scheme = 'coolwarm'; % Options: 'coolwarm', 'jet', 'parula', etc.
 show_boundary = true;      % Set to true to show the BRS boundary
@@ -141,6 +141,70 @@ end
 
 %% 1.5. Visualize the time of BRS entry
 figure('Name', 'Time of BRS entry', 'Position', [100, 100, 1200, 600]);
+
+% Convert time indices to actual times
+arrival_times = zeros(size(arrival_time_indices));
+for i = 1:num_times
+    arrival_times(arrival_time_indices == i) = tau(i);
+end
+arrival_times(isinf(arrival_time_indices)) = inf;
+
+% Extract final BRS for boundaries
+final_brs = value_function_full(:,:,:,end);
+
+% Create a set of delta slices to visualize
+delta_slices_to_show = delta_slices; % In degrees
+num_slices = length(delta_slices_to_show);
+
+% Set up subplot grid
+for i = 1:num_slices
+    delta_slice_deg = delta_slices_to_show(i);
+    
+    % Convert to radians
+    delta_rad = delta_slice_deg * pi/180;
+    
+    % Find closest grid point
+    [~, delta_idx] = min(abs(g.vs{3} - delta_rad));
+    actual_delta_deg = g.vs{3}(delta_idx) * 180/pi;
+    
+    % Extract 2D slice from arrival times
+    arrival_time_slice = squeeze(arrival_times(:,:,delta_idx));
+    
+    % Create a mask for unreachable points
+    reachable_mask = isfinite(arrival_time_slice);
+    
+    % Set unreachable points to NaN for better visualization
+    arrival_time_slice(~reachable_mask) = NaN;
+    
+    % Extract value function for BRS boundary
+    value_slice = squeeze(final_brs(:,:,delta_idx));
+    
+    % Extract coordinate grids
+    beta_grid = g.xs{2}(:,:,delta_idx) * 180/pi;   % Convert to degrees
+    gamma_grid = g.xs{1}(:,:,delta_idx) * 180/pi;  % Convert to degrees
+    
+    % Create subplot
+    subplot(1, num_slices, i);
+    
+    % Create contour plot of arrival times
+    [~, h] = contourf(beta_grid, gamma_grid, arrival_time_slice, 10);
+    colormap(parula);
+    c = colorbar;
+    title(c, 'Time (s)');
+    hold on;
+    
+    % Add BRS boundary for reference
+    [~, h_brs] = contour(beta_grid, gamma_grid, value_slice, [0, 0], 'LineWidth', 2, 'Color', 'k');
+    
+    % Add labels
+    xlabel('Sideslip Angle (degrees)', 'FontSize', 12);
+    ylabel('Yaw Rate (degrees/s)', 'FontSize', 12);
+    title(sprintf('Time of BRS Entry at δ = %.1f°', actual_delta_deg), 'FontSize', 14);
+    grid on;
+end
+
+% Add a main title for the entire figure
+sgtitle('Time of Entry into BRS (seconds)', 'FontSize', 16, 'FontWeight', 'bold');
 
 %% 2. Compute gradients for each time slice
 fprintf('Computing gradients for all time slices...\n');
@@ -315,7 +379,7 @@ end
 
 %% Plot the delta gradient component based on entry time
 subplot(1, 2, 2);
-[~, h_grad] = contourf(beta_grid, gamma_grid, delta_gradient, 20);
+[~, h_grad] = contourf(beta_grid, gamma_grid, delta_gradient, 10);
 hold on;
 [~, h_brs2] = contour(beta_grid, gamma_grid, value_slice, [0, 0], 'LineWidth', 2, 'Color', 'k');
 c = colorbar;

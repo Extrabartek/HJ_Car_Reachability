@@ -22,7 +22,7 @@ main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Re
 
 %% Reachability result selection
 % Path to the reachability results folder
-brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250429_142622_vx30-30_dvmax20-20');
+brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250502_155507_vx20-20_dvmax40-40');
 
 % Optional: Path to FRS results folder - required for FRS trajectory visualization
 frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250501_103930_vx20-20_dvmax40-40');
@@ -47,7 +47,7 @@ trajectory_file = 'trajectory_data.mat';  % For loading/saving trajectory data
 % Initial state for trajectory computation
 % Format: [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
 % Example: 10 deg/s yaw rate, 5 deg sideslip, 3 deg steering
-xinit = [deg2rad(0); deg2rad(15); deg2rad(0)];
+xinit = [deg2rad(-20); deg2rad(-8); deg2rad(2)];
 
 % Trajectory computation method - options: 'arrival', 'gradient', or 'legacy'
 % 'arrival'  - Uses time-of-arrival function for guidance (fastest)
@@ -58,7 +58,7 @@ trajectory_method = 'gradient';
 % Parameters for trajectory computation
 velocity_idx = 1;               % Index of velocity to use from data
 control_idx = 1;                % Index of control limit to use (dv_max or Mz)
-max_time = 10.0;                % Maximum trajectory time (seconds)
+max_time = 5.5;                % Maximum trajectory time (seconds)
 use_frs_constraint = false;     % Use FRS for safety constraints (for BRS trajectories only)
 frs_weight = 0.5;               % Weight for FRS constraints (0-1)
 
@@ -449,7 +449,7 @@ if visualize_trajectory
             opt_options.method = trajectory_method;
             opt_options.uMode = uMode;  % Set based on trajectory type (min for BRS, max for FRS)
             opt_options.maxTime = max_time;
-            opt_options.dt = (tau(2) - tau(1))/20;  % Use smaller time step for better integration
+            opt_options.dt = (tau(2) - tau(1))/5;  % Use smaller time step for better integration
             opt_options.visualize = false;
             opt_options.finalSet = data0;  % Use target set from data
             

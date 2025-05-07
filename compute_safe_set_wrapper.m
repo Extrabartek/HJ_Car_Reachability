@@ -11,6 +11,5 @@ results_folder = compute_safe_set(brs_folder, frs_folder, ...
 
 
 
-
 end
 
