@@ -7,6 +7,11 @@ function [traj, traj_tau, traj_u, metrics] = computeOptimizedTrajectory(g, data,
 % For BRS trajectories: Control tries to minimize value function to reach target
 % For FRS trajectories: Control tries to maximize value function to escape target
 %
+% Supports multiple dynamic system types:
+% - Bicycle model (Standard and Steered variants)
+% - Double Integrator
+% - Dubins Car
+%
 % Inputs:
 %   g           - Grid structure from reachability analysis
 %   data        - Value function data (BRS/FRS) (full time series)
@@ -111,13 +116,58 @@ if options.useFRS && ~isfield(options, 'data_frs')
     error('FRS constraints enabled but options.data_frs is missing.');
 end
 
+%% Detect dynamic system type
+% Determine the type of dynamic system based on the class
+system_type = '';
+if isa(dynSys, 'NonlinearBicycleSteered')
+    system_type = 'bicycle_steered';
+    fprintf('Detected dynamic system: Steered Bicycle\n');
+elseif isa(dynSys, 'NonlinearBicycle')
+    system_type = 'bicycle_standard';
+    fprintf('Detected dynamic system: Standard Bicycle\n');
+elseif isa(dynSys, 'DubinsCar')
+    system_type = 'dubins_car';
+    fprintf('Detected dynamic system: Dubins Car\n');
+elseif isa(dynSys, 'DoubleInt')
+    system_type = 'double_integrator';
+    fprintf('Detected dynamic system: Double Integrator\n');
+else
+    % Try to infer from the state dimension if class can't be determined
+    state_dim = length(xinit);
+    if state_dim == 3
+        % Could be steered bicycle or Dubins Car
+        % Check if 3rd dimension is heading/steering
+        if g.min(3) >= -pi && g.max(3) <= pi
+            % Likely Dubins Car (periodic heading)
+            system_type = 'dubins_car';
+            fprintf('Inferred dynamic system: Dubins Car (from state dimensions)\n');
+        else
+            % Likely steered bicycle
+            system_type = 'bicycle_steered';
+            fprintf('Inferred dynamic system: Steered Bicycle (from state dimensions)\n');
+        end
+    elseif state_dim == 2
+        % Could be standard bicycle or Double Integrator
+        % Try to infer from grid parameters
+        if abs(g.max(1)) > 10 && abs(g.max(2)) > 10
+            % Likely Double Integrator with larger position/velocity ranges
+            system_type = 'double_integrator';
+            fprintf('Inferred dynamic system: Double Integrator (from state dimensions)\n');
+        else
+            % Likely standard bicycle with smaller angle ranges
+            system_type = 'bicycle_standard';
+            fprintf('Inferred dynamic system: Standard Bicycle (from state dimensions)\n');
+        end
+    else
+        error('Unable to determine dynamic system type. Please provide a supported system.');
+    end
+end
+
 % Get grid dimensions
 grid_dims = g.dim;
 
-% Check data dimensionality
-data_dims = ndims(data);
-
 % Ensure data is a full time series (if not, try to handle it)
+data_dims = ndims(data);
 if data_dims == grid_dims
     % Single time slice - expand for backward compatibility
     warning(['Data appears to be a single time slice. ', ...
@@ -149,11 +199,11 @@ end
 switch options.method
     case 'arrival'
         % Method using time-of-arrival function
-        [traj, traj_tau, traj_u, metrics] = computeTrajectoryWithArrivalTime(g, data_full, tau, xinit, dynSys, options);
+        [traj, traj_tau, traj_u, metrics] = computeTrajectoryWithArrivalTime(g, data_full, tau, xinit, dynSys, options, system_type);
         
     case 'gradient'
         % Optimized method with full gradient precomputation
-        [traj, traj_tau, traj_u, metrics] = computeTrajectoryWithGradientPrecomputation(g, data_full, tau, xinit, dynSys, options);
+        [traj, traj_tau, traj_u, metrics] = computeTrajectoryWithGradientPrecomputation(g, data_full, tau, xinit, dynSys, options, system_type);
         
     otherwise
         error('Unsupported computation method: %s', options.method);
@@ -162,7 +212,7 @@ end
 end
 
 %% ===== Trajectory computation with arrival time function =====
-function [traj, traj_tau, traj_u, metrics] = computeTrajectoryWithArrivalTime(g, data, tau, xinit, dynSys, options)
+function [traj, traj_tau, traj_u, metrics] = computeTrajectoryWithArrivalTime(g, data, tau, xinit, dynSys, options, system_type)
 % Trajectory computation using time-of-arrival function for better direction
 
 arrival_time = options.arrivalTime;
@@ -265,7 +315,7 @@ for i = 1:max_steps
     
     % Apply FRS constraint if enabled for BRS trajectories
     if ~is_frs_trajectory && options.useFRS && isfield(options, 'data_frs')
-        u = applyFRSConstraint(dynSys, t_current, x_current, deriv_at_x, u, g, options);
+        u = applyFRSConstraint(dynSys, t_current, x_current, deriv_at_x, u, g, options, system_type);
     end
     
     % Store control
@@ -354,7 +404,7 @@ end
 end
 
 %% ===== Trajectory computation with gradient precomputation =====
-function [traj, traj_tau, traj_u, metrics] = computeTrajectoryWithGradientPrecomputation(g, data, tau, xinit, dynSys, options)
+function [traj, traj_tau, traj_u, metrics] = computeTrajectoryWithGradientPrecomputation(g, data, tau, xinit, dynSys, options, system_type)
 % Optimized trajectory computation method with pre-computation of all gradients
 
 % Determine trajectory type
@@ -532,7 +582,7 @@ for i = 1:max_steps
     
     % Apply FRS constraint if enabled (for BRS trajectories only)
     if ~is_frs_trajectory && options.useFRS && isfield(options, 'data_frs')
-        u = applyFRSConstraint(dynSys, t_current, x_current, deriv_at_x, u, g, options);
+        u = applyFRSConstraint(dynSys, t_current, x_current, deriv_at_x, u, g, options, system_type);
     end
     
     % Store control
@@ -694,8 +744,8 @@ else
 end
 end
 
-function u_safe = applyFRSConstraint(dynSys, t, x, deriv, u_brs, g, options)
-% Apply FRS safety constraints to control input
+function u_safe = applyFRSConstraint(dynSys, t, x, deriv, u_brs, g, options, system_type)
+% Apply FRS safety constraints to control input, with support for different system types
 % This implements a basic blending approach between BRS and FRS control
 
 % First, check if state is in FRS
@@ -717,7 +767,36 @@ if frs_value > -0.1  % Only blend when close to boundary
     u_frs = dynSys.optCtrl(t, x, deriv_frs_at_x, 'max');
     
     % Check if the controls are in opposite directions
-    if any(sign(u_brs) .* sign(u_frs) < 0)  % Check for any conflicting dimensions
+    control_conflict = false;
+    
+    % Apply system-specific conflict detection
+    switch system_type
+        case {'bicycle_standard', 'bicycle_steered'}
+            % For bicycle models, direct sign comparison works
+            if any(sign(u_brs) .* sign(u_frs) < 0)
+                control_conflict = true;
+            end
+            
+        case 'dubins_car'
+            % For Dubins Car, conflict is in turning direction
+            if sign(u_brs) ~= sign(u_frs)
+                control_conflict = true;
+            end
+            
+        case 'double_integrator'
+            % For Double Integrator, conflict is in acceleration direction
+            if sign(u_brs) ~= sign(u_frs)
+                control_conflict = true;
+            end
+            
+        otherwise
+            % Default to simple sign check
+            if any(sign(u_brs) .* sign(u_frs) < 0)
+                control_conflict = true;
+            end
+    end
+    
+    if control_conflict
         % Controls are conflicting - use weighted average based on FRS value
         % The closer to the FRS boundary, the more we weight the FRS control
         boundary_weight = min(1, max(0, (0.1 - abs(frs_value))/0.1));

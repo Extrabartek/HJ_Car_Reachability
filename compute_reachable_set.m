@@ -1,4 +1,4 @@
-function result_folder = compute_reachable_set(velocities, control_limits, varargin)
+ function result_folder = compute_reachable_set(velocities, control_limits, varargin)
 % COMPUTE_REACHABLE_SET Computes reachable sets for vehicle with different control limits
 %
 % This consolidated function handles computation for multiple model types:
@@ -396,6 +396,7 @@ for v_idx = 1:length(velocity_range)
         schemeData.dynSys = dCar;
         schemeData.accuracy = opts.accuracy;
         schemeData.uMode = opts.uMode;
+        schemeData.minWith = 'minVOverTime';
         
         % Set computation direction (forward/backward)
         if strcmp(opts.direction, 'forward')

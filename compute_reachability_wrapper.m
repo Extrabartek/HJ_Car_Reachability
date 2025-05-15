@@ -29,12 +29,12 @@ controlType = 'dv';          % Options: 'mz' (yaw moment) or 'dv' (steering rate
 %% Model-specific parameters
 
 % Bicycle model parameters
-velocities = [20];           % Vehicle velocities to test [m/s] (for bicycle model)
+velocities = [5];           % Vehicle velocities to test [m/s] (for bicycle model)
 
 % Double Integrator parameters (if modelType = 'doubleInt')
 doubleint_dims = 1:2;        % Dimensions to use
 doubleint_drange = [0, 0];   % Disturbance range
-
+ 
 % Dubins Car parameters (if modelType = 'dubinsCar')
 dubins_speed = 5;            % Constant speed [m/s]
 dubins_dims = 1:3;           % Dimensions to use
@@ -45,10 +45,10 @@ dubins_drange = {[0;0;0], [0;0;0]}; % Disturbance range
 % - If modelType = 'bicycle' and controlType = 'dv': Max steering rates [deg/s]
 % - If modelType = 'doubleInt': Acceleration limits [m/s²]
 % - If modelType = 'dubinsCar': Turning rate limits [deg/s]
-control_limits = [40];       % Will be converted to radians for 'dv' and 'dubinsCar'
+control_limits = [10];       % Will be converted to radians for 'dv' and 'dubinsCar'
 
 %% Time parameters
-tMax = 1.0;                  % Maximum simulation time [s]
+tMax = 0.2;                  % Maximum simulation time [s]
 dt = 0.01;                   % Time step [s]
 
 %% Grid parameters
@@ -71,11 +71,11 @@ uMode = '';                  % Control strategy: 'min', 'max', or '' (empty = us
                              % Default for 'backward': 'min'
                              % Default for 'forward': 'max'
 
-accuracy = 'high';           % Numerical accuracy: 'low', 'medium', 'high', 'veryhigh'
+accuracy = 'veryHigh';           % Numerical accuracy: 'low', 'medium', 'high', 'veryhigh'
 
 %% Path to existing results folder (only used if generate_results = false)
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-existing_result_folder = strcat(main_results_folder, 'steered_brs_results_20250501_172504_vx20-20_dvmax40-40');
+existing_result_folder = strcat(main_results_folder, 'dubinscar_brs_results_20250507_142451_v5_turn40-40');
 
 %% Visualization options
 % Types of plots to generate (cell array of strings)
