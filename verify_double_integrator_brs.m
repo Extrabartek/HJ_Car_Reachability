@@ -148,8 +148,36 @@ fprintf('Using control limit: %.2f, target radius: %.2f\n', control_limit, targe
 % First create a binary mask of the BRS (all points with value <= 0)
 brs_mask = (value_function_slice <= 0);
 
-% Extract boundary points using contour
-C = contourc(g.xs{1}, value_function_slice', [0, 0]);
+% Replace the contourc line (around line 149) with this block
+% First, examine the structure of the grid
+if isstruct(g) && isfield(g, 'xs')
+    % Check dimensions and types
+    if iscell(g.xs) && length(g.xs) >= 2
+        % Try to extract grid information safely
+        if isvector(g.xs{1}) && isvector(g.xs{2})
+            % If g.xs contains vectors, use them directly
+            [X, Y] = meshgrid(g.xs{1}, g.xs{2});
+            C = contourc(g.xs{1}, g.xs{2}, value_function_slice', [0, 0]);
+        else
+            % If g.xs contains matrices or higher-dimensional arrays
+            % Generate simple coordinate vectors based on array size
+            [rows, cols] = size(value_function_slice);
+            x_vec = 1:cols;
+            y_vec = 1:rows;
+            % Create a simple contour without actual coordinates
+            C = contourc(x_vec, y_vec, value_function_slice, [0, 0]);
+            % Note that this will give relative positions, not actual coordinates
+        end
+    else
+        % Fallback to direct contour
+        [c, ~] = contour(value_function_slice, [0, 0]);
+        C = c;
+    end
+else
+    % Fallback to direct contour if g structure is unexpected
+    [c, ~] = contour(value_function_slice, [0, 0]);
+    C = c;
+end
 
 % Process contour data
 boundary_points = [];
@@ -170,7 +198,55 @@ end
 
 fprintf('Extracted %d boundary points\n', size(boundary_points, 1));
 
-%% Separate into positive and negative velocity regions
+% After the boundary points extraction (around line 160-170), replace or add this code:
+
+% Convert boundary points from grid indices to actual coordinates
+transformed_boundary_points = zeros(size(boundary_points));
+
+% Determine grid center indices
+[rows, cols] = size(value_function_slice);
+center_row = ceil(rows/2);
+center_col = ceil(cols/2);
+
+fprintf('Grid dimensions: %d x %d, Center: (%d, %d)\n', rows, cols, center_row, center_col);
+
+for i = 1:size(boundary_points, 1)
+    % Extract the grid indices (might need rounding)
+    col_idx = round(boundary_points(i, 1));
+    row_idx = round(boundary_points(i, 2));
+    
+    % Ensure indices are within bounds
+    col_idx = max(1, min(col_idx, cols));
+    row_idx = max(1, min(row_idx, rows));
+    
+    % Get the actual coordinate values from the grid
+    x_val = g.xs{1}(row_idx, col_idx);  % Position
+    v_val = g.xs{2}(row_idx, col_idx);  % Velocity
+    
+    transformed_boundary_points(i, 1) = x_val;
+    transformed_boundary_points(i, 2) = v_val;
+end
+
+% Replace original boundary points with transformed ones
+boundary_points = transformed_boundary_points;
+
+fprintf('Transformed boundary points to actual coordinates\n');
+fprintf('Coordinate ranges: x=[%.4f, %.4f], v=[%.4f, %.4f]\n', ...
+    min(boundary_points(:,1)), max(boundary_points(:,1)), ...
+    min(boundary_points(:,2)), max(boundary_points(:,2)));
+
+% Display a few transformed points
+fprintf('First few transformed boundary points:\n');
+disp(boundary_points(1:min(5, size(boundary_points, 1)), :));
+
+% Check if we still need to swap columns based on expected ranges
+var_x = var(boundary_points(:, 1));
+var_v = var(boundary_points(:, 2));
+fprintf('Variance: x=%.4f, v=%.4f\n', var_x, var_v);
+
+% Now continue with the rest of the code...
+
+% Now continue with the separation of points into positive and negative velocity
 pos_vel_mask = boundary_points(:, 2) >= 0;
 neg_vel_mask = boundary_points(:, 2) < 0;
 
@@ -271,7 +347,18 @@ if opts.visualize
     contour(g.xs{1}, g.xs{2}, value_function_slice', [0, 0], 'LineWidth', 2, 'Color', 'b');
     
     % Create a denser grid for plotting analytical parabolas
-    v_dense = linspace(min(g.xs{2}), max(g.xs{2}), 1000);
+    % Use the actual coordinate ranges instead of g.xs directly
+    v_dense = linspace(min(boundary_points(:,2))-0.5, max(boundary_points(:,2))+0.5, 1000);
+    
+    % Also update the target set visualization (around line 365)
+    % Instead of using rectangle which may not be positioned correctly
+    target_center = [0, 0]; % Assuming target is centered at origin
+    if isstruct(g) && isfield(g, 'center')
+        target_center = g.center;
+    end
+    rectangle('Position', [target_center(1)-target_radius, target_center(2)-target_radius, ...
+                      2*target_radius, 2*target_radius], ...
+         'Curvature', [1, 1], 'LineWidth', 2, 'LineStyle', '--', 'EdgeColor', 'g');
     
     % Plot analytical solutions
     % Positive velocity parabola

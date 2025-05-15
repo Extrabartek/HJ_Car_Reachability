@@ -228,7 +228,6 @@ verification_results = struct();
 
 if strcmp(model_type, 'doubleInt')
     % Verify Double Integrator
-    try
         % Check if the verification function exists
         if exist('verify_double_integrator_brs', 'file')
             [rms_error, r_squared] = verify_double_integrator_brs(results_folder, ...
@@ -250,9 +249,6 @@ if strcmp(model_type, 'doubleInt')
         else
             error('verify_double_integrator_brs function not found. Please add it to your MATLAB path.');
         end
-    catch err
-        warning('Error in double integrator verification: %s', err.message);
-    end
     
 elseif strcmp(model_type, 'dubinsCar')
     % Verify Dubins Car
