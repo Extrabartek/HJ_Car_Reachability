@@ -1,10 +1,10 @@
-% Add a new parameter to the function signature to indicate trajectory type
-function visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, varargin)
-% VISUALIZECARTRAJECTORY Creates dual-view visualization of car trajectory
+function visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, data_brs_full,varargin)
+% VISUALIZECARTRAJECTORY Creates enhanced visualization of car trajectory
 %
-% This function creates a synchronized visualization with two views:
-% 1. 3D state-space view (right): Shows trajectory in state space with BRS/FRS and target set
-% 2. Top-down car-centric view (left): Shows car fixed at center with the world moving underneath
+% This function creates a synchronized visualization with three views:
+% 1. Top-down car-centric view (left): Shows car fixed at center with the world moving underneath
+% 2. Steering gradient view (middle): Shows gradient of value function with respect to steering angle
+% 3. 3D state-space view (right): Shows trajectory in state space with BRS/FRS and target set
 %
 % Inputs:
 %   traj        - State trajectory [gamma; beta; delta] over time
@@ -58,7 +58,7 @@ p.addParameter('gridSize', 20, @isnumeric);
 p.addParameter('isoValue', 0, @isnumeric);
 p.addParameter('brsOpacity', 0.3, @(x) isnumeric(x) && x >= 0 && x <= 1);
 p.addParameter('targetOpacity', 0.5, @(x) isnumeric(x) && x >= 0 && x <= 1);
-p.addParameter('isBRS', true, @islogical);  % New parameter to indicate trajectory type
+p.addParameter('isBRS', true, @islogical);  % Flag indicating if BRS or FRS trajectory
 
 p.parse(traj, traj_tau, g, data_brs, data0, vx, varargin{:});
 opts = p.Results;
@@ -140,14 +140,38 @@ try
     front_overhang = (opts.carLength - opts.wheelBase) * 0.4;
     rear_overhang = (opts.carLength - opts.wheelBase) * 0.6;
 
+    %% Pre-compute gradients for steering visualization 
+    steering_vis_enabled = false;
+    
+    % Compute gradients only if we have 3D data (needed for steering gradient)
+    if is_3d_brs
+        try
+            fprintf('Computing gradients for steering visualization...\n');
+            all_gradients = computeGradients(g, data_brs);
+            steering_vis_enabled = true;
+            fprintf('Gradient computation successful.\n');
+            % Example usage:
+            % 1. Compute arrival time (continuous time values)
+            arrival_time = compute_arrival_time(data_brs_full, traj_tau);
+            
+            % 2. Compute entry-time steering gradients (component 3 for steering)
+            steering_gradients = computeEntryTimeGradients(g, data_brs_full, arrival_time, 3, traj_tau);
+        catch err
+            warning('Error computing gradients: %s\nSteering visualization will be disabled.', err.message);
+        end
+    else
+        warning('Value function is not 3D. Steering visualization will be disabled.');
+    end
+    
     %% Setup figure
     fig = figure('Name', 'Car Trajectory Visualization', ...
-                 'Position', [50, 50, 1600, 800], ...
+                 'Position', [50, 50, 1800, 800], ...  % Wider to accommodate three panels
                  'Color', 'white');
 
-    % Create layout with two main panels side by side
-    left_panel = subplot(1, 2, 1);
-    right_panel = subplot(1, 2, 2);
+    % Create layout with three main panels side by side
+    left_panel = subplot(1, 3, 1);      % Car view 
+    middle_panel = subplot(1, 3, 2);    % Steering gradient view
+    right_panel = subplot(1, 3, 3);     % State space view
 
     %% Setup 3D state-space view (right panel)
     axes(right_panel);
@@ -314,6 +338,89 @@ try
               ax_limits(3)-axis_margin, ax_limits(4)+axis_margin]);
     end
 
+    %% Setup steering gradient visualization (middle panel)
+    axes(middle_panel);
+    
+    if steering_vis_enabled
+        % Find the initial steering angle
+        initial_delta = traj(3,1);
+        
+        % Find the closest slice to the current steering angle
+        [~, delta_idx] = min(abs(g.xs{3}(1,1,:) - initial_delta));
+        
+        % Extract the value function slice and steering gradient slice
+        value_slice = squeeze(data_brs(:,:,delta_idx));
+        delta_gradient = squeeze(steering_gradients);
+        
+        % Convert grid to degrees for visualization
+        xs1_deg = g.xs{1}(:,:,1) * 180/pi;  % yaw rate
+        xs2_deg = g.xs{2}(:,:,1) * 180/pi;  % sideslip angle
+        
+        % Create the gradient visualization
+        gradient_vis = pcolor(xs2_deg, xs1_deg, delta_gradient);
+        gradient_vis.EdgeColor = 'none';
+        
+        % Use custom colormap for gradients: blue-white-red for negative/positive
+        n = 256;
+        cmap = zeros(n, 3);
+        % Blue to white
+        cmap(1:n/2, 1) = linspace(0, 1, n/2);
+        cmap(1:n/2, 2) = linspace(0, 1, n/2);
+        cmap(1:n/2, 3) = linspace(1, 1, n/2);
+        % White to red
+        cmap(n/2+1:n, 1) = linspace(1, 1, n/2);
+        cmap(n/2+1:n, 2) = linspace(1, 0, n/2);
+        cmap(n/2+1:n, 3) = linspace(1, 0, n/2);
+        
+        colormap(middle_panel, cmap);
+        c = colorbar;
+        title(c, '∂V/∂δ');
+        
+        % Use symmetric colorbar for better visualization
+        max_grad = max(abs(delta_gradient(:)));
+        clim([-max_grad, max_grad]);
+        
+        % Add BRS contour at 0 value
+        hold on;
+        [~, h_brs_contour] = contour(xs2_deg, xs1_deg, value_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
+        
+        % Add trajectory marker
+        h_traj_marker = plot(traj(2,1)*180/pi, traj(1,1)*180/pi, 'ko', 'MarkerSize', 12, 'LineWidth', 2);
+        
+        % Add labels
+        xlabel('Sideslip Angle \beta (deg)', 'FontSize', 12);
+        ylabel('Yaw Rate \gamma (deg/s)', 'FontSize', 12);
+        title(sprintf('Steering Gradient at δ = %.1f°', initial_delta*180/pi), 'FontSize', 14);
+        
+        % Add text explaining the gradient meaning
+        if opts.isBRS
+            text_x = min(xs2_deg(:)) + 0.1*(max(xs2_deg(:))-min(xs2_deg(:)));
+            text_y_blue = max(xs1_deg(:)) - 0.05*(max(xs1_deg(:))-min(xs1_deg(:)));
+            text_y_red = max(xs1_deg(:)) - 0.1*(max(xs1_deg(:))-min(xs1_deg(:)));
+            
+            text(text_x, text_y_blue, 'Blue = Steer Right (δ̇ > 0)', 'Color', 'blue', 'FontWeight', 'bold');
+            text(text_x, text_y_red, 'Red = Steer Left (δ̇ < 0)', 'Color', 'red', 'FontWeight', 'bold');
+        else
+            text_x = min(xs2_deg(:)) + 0.1*(max(xs2_deg(:))-min(xs2_deg(:)));
+            text_y_blue = max(xs1_deg(:)) - 0.05*(max(xs1_deg(:))-min(xs1_deg(:)));
+            text_y_red = max(xs1_deg(:)) - 0.1*(max(xs1_deg(:))-min(xs1_deg(:)));
+            
+            text(text_x, text_y_blue, 'Blue = Steer Right (δ̇ > 0)', 'Color', 'blue', 'FontWeight', 'bold');
+            text(text_x, text_y_red, 'Red = Steer Left (δ̇ < 0)', 'Color', 'red', 'FontWeight', 'bold');
+        end
+        
+        grid on;
+        
+        % Set axis limits to match the right panel
+        xlim([min(xs2_deg(:)), max(xs2_deg(:))]);
+        ylim([min(xs1_deg(:)), max(xs1_deg(:))]);
+    else
+        % If steering visualization is not available, show a message
+        text(0.5, 0.5, 'Steering gradient visualization not available', ...
+             'HorizontalAlignment', 'center', 'FontSize', 12);
+        axis off;
+    end
+
     %% Setup top-down car-centric view (left panel)
     axes(left_panel);
 
@@ -337,7 +444,7 @@ try
     % Add perpendicular grid lines
     h_grid_perp = plot(grid_y_vec, grid_x_vec, 'k.', 'MarkerSize', 3);
 
-    %% NEW: Calculate the initial sideslip offset to align velocity vector with car frame
+    %% Calculate the initial sideslip offset to align velocity vector with car frame
     % Get initial sideslip angle
     initial_beta = beta(1);
     
@@ -491,7 +598,6 @@ try
     initial_arrow_angle = car_rotation + delta(1); % Initial steering angle plus car rotation
     h_direction = quiver(0, 0, arrow_length * cos(initial_arrow_angle), arrow_length * sin(initial_arrow_angle), 0, 'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
 
-
     % Set up axes properties
     axis equal;
     grid on;
@@ -517,12 +623,12 @@ try
                             'Min', 1, 'Max', length(traj_tau), ...
                             'Value', 1, ...
                             'SliderStep', [1/length(traj_tau), 10/length(traj_tau)], ...
-                            'Position', [200, 20, 1000, 20]);
+                            'Position', [400, 20, 1000, 20]);
 
     % Time display
     time_display = uicontrol('Style', 'text', ...
                              'String', sprintf('Time: %.2f s', traj_tau(1)), ...
-                             'Position', [800, 45, 200, 20], ...
+                             'Position', [900, 45, 200, 20], ...
                              'BackgroundColor', 'white', ...
                              'FontSize', 12);
 
@@ -530,7 +636,7 @@ try
     if ~try_video
         play_button = uicontrol('Style', 'togglebutton', ...
                                'String', 'Play', ...
-                               'Position', [50, 20, 100, 30], ...
+                               'Position', [150, 20, 100, 30], ...
                                'Value', 0);
     end
 
@@ -581,6 +687,18 @@ try
         'isBRS', opts.isBRS, ...
         'final_text', final_text ...
         );
+    
+    % Store steering visualization data if available
+    if steering_vis_enabled
+        userData.steering_vis_enabled = true;
+        userData.gradient_vis = gradient_vis;
+        userData.h_traj_marker = h_traj_marker;
+        userData.all_gradients = all_gradients;
+        userData.g = g;
+        userData.middle_panel = middle_panel;
+    else
+        userData.steering_vis_enabled = false;
+    end
     
     % Store the userData in the figure for access by callbacks
     set(fig, 'UserData', userData);
@@ -672,8 +790,6 @@ catch err
     end
 end
 
-% Add the missing callback functions at the end of the visualizeCarTrajectory.m file
-
 %% Callback function for the slider - will have access to figure's UserData
 function updateVisualizationCallback(src, ~)
     % Get the userData from the figure
@@ -705,12 +821,6 @@ function updateFromTimerCallback(~, ~)
     % Check if we've reached the end
     if next_idx > length(userData.traj_tau)
         next_idx = 1;  % Loop back to beginning
-        % Or stop: 
-        % set(play_button, 'Value', 0, 'String', 'Play');
-        % userData.is_playing = false;
-        % stop(userData.play_timer);
-        % set(fig, 'UserData', userData);
-        % return;
     end
     
     % Update slider position
@@ -756,6 +866,7 @@ function onClose(src, ~)
     delete(src);
 end
 
+%% Main visualization update function
 function updateVisualization(idx, userData)
     % Current state and time
     current_time = userData.traj_tau(idx);
@@ -785,7 +896,31 @@ function updateVisualization(idx, userData)
         end
     end
     
-    % ===== FIX: PROPERLY ROTATE AND POSITION THE CAR AND WHEELS =====
+    % Update steering gradient visualization
+    if userData.steering_vis_enabled
+        % Find closest slice to current steering angle
+        [~, delta_idx] = min(abs(userData.g.xs{3}(1,1,:) - current_delta));
+        
+        % Extract the steering gradient at the current slice
+        delta_gradient = squeeze(userData.all_gradients{3}(:,:,delta_idx));
+        
+        % Update visualization
+        set(userData.gradient_vis, 'CData', delta_gradient);
+        
+        % Update trajectory marker position
+        set(userData.h_traj_marker, 'XData', current_beta*180/pi, 'YData', current_gamma*180/pi);
+        
+        % Update the title with current steering angle
+        title(userData.middle_panel, sprintf('Steering Gradient at δ = %.1f°', current_delta*180/pi), 'FontSize', 14);
+        
+        % Update colormap scaling for better visualization
+        max_grad = max(abs(delta_gradient(:)));
+        if max_grad > 0
+            clim(userData.middle_panel, [-max_grad, max_grad]);
+        end
+    end
+    
+    % ===== Update car and wheels position =====
     
     % 1. Get car dimensions from userData
     car_length = userData.opts.carLength;
