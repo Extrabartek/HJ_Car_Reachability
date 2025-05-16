@@ -27,7 +27,7 @@ main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Re
 
 %% Reachability result selection
 % Path to the reachability results folder
-brs_folder = fullfile(main_results_folder, 'dubinscar_brs_results_20250513_162835_v5_turn10-10');
+brs_folder = fullfile(main_results_folder, 'dubinscar_brs_results_20250516_153903_v1_turn57-57');
 
 % Optional: Path to FRS results folder - required for FRS trajectory visualization
 frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250501_103930_vx20-20_dvmax40-40');
@@ -53,7 +53,7 @@ trajectory_file = 'trajectory_data.mat';  % For loading/saving trajectory data
 % - Bicycle Model:    [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
 % - Double Integrator: [position; velocity]
 % - Dubins Car:       [x; y; theta] (position and heading) in meters and radians
-xinit = [deg2rad(-75); deg2rad(-80); deg2rad(60)];
+xinit = [2, 2, -pi * 5/6];
 
 % Trajectory computation method - options: 'arrival', 'gradient', or 'legacy'
 % 'arrival'  - Uses time-of-arrival function for guidance (fastest)
@@ -64,7 +64,7 @@ trajectory_method = 'gradient';
 % Parameters for trajectory computation
 velocity_idx = 1;               % Index of velocity to use from data (for bicycle models)
 control_idx = 1;                % Index of control limit to use 
-max_time = 1.5;                % Maximum trajectory time (seconds)
+max_time = 2.5;                % Maximum trajectory time (seconds)
 use_frs_constraint = false;     % Use FRS for safety constraints (for BRS trajectories only)
 frs_weight = 0.0;               % Weight for FRS constraints (0-1)
 

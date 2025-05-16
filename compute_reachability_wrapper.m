@@ -36,7 +36,7 @@ doubleint_dims = 1:2;        % Dimensions to use
 doubleint_drange = [0, 0];   % Disturbance range
  
 % Dubins Car parameters (if modelType = 'dubinsCar')
-dubins_speed = 5;            % Constant speed [m/s]
+dubins_speed = 1;            % Constant speed [m/s]
 dubins_dims = 1:3;           % Dimensions to use
 dubins_drange = {[0;0;0], [0;0;0]}; % Disturbance range
 
@@ -45,26 +45,26 @@ dubins_drange = {[0;0;0], [0;0;0]}; % Disturbance range
 % - If modelType = 'bicycle' and controlType = 'dv': Max steering rates [deg/s]
 % - If modelType = 'doubleInt': Acceleration limits [m/s²]
 % - If modelType = 'dubinsCar': Turning rate limits [deg/s]
-control_limits = [10];       % Will be converted to radians for 'dv' and 'dubinsCar'
+control_limits = [rad2deg(1)];       % Will be converted to radians for 'dv' and 'dubinsCar'
 
 %% Time parameters
-tMax = 0.2;                  % Maximum simulation time [s]
-dt = 0.01;                   % Time step [s]
+tMax = 2.0;                  % Maximum simulation time [s]
+dt = 0.1;                   % Time step [s]
 
 %% Grid parameters
 % Grid size: Number of grid points in each dimension
-gridSize = [];               % Empty = use defaults based on model type
+gridSize = [41, 41, 41];               % Empty = use defaults based on model type
                              % Default for 'bicycle'+'mz': [71, 71]
                              % Default for 'bicycle'+'dv': [51, 51, 51]
                              % Default for 'doubleInt': [101, 101]
                              % Default for 'dubinsCar': [51, 51, 51]
 
 % Grid limits in degrees (will be converted to radians for angles)
-gridMin_deg = [];            % Empty = use defaults based on model type
-gridMax_deg = [];            % Empty = use defaults based on model type
+gridMin_deg = [-5, -5, -180];            % Empty = use defaults based on model type
+gridMax_deg = [5, 5, 180];            % Empty = use defaults based on model type
 
 % Target set size in degrees (will be converted to radians for angles)
-targetSize_deg = [];         % Empty = use defaults based on model type
+targetSize_deg = [1, 1, 2*pi];         % Empty = use defaults based on model type
 
 %% Advanced parameters
 uMode = '';                  % Control strategy: 'min', 'max', or '' (empty = use default)
@@ -75,7 +75,7 @@ accuracy = 'veryHigh';           % Numerical accuracy: 'low', 'medium', 'high', 
 
 %% Path to existing results folder (only used if generate_results = false)
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
-existing_result_folder = strcat(main_results_folder, 'dubinscar_brs_results_20250507_142451_v5_turn40-40');
+existing_result_folder = strcat(main_results_folder, 'doubleint_brs_results_20250516_100424_acc1-1');
 
 %% Visualization options
 % Types of plots to generate (cell array of strings)
