@@ -27,7 +27,8 @@ main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Re
 
 %% Reachability result selection
 % Path to the reachability results folder
-brs_folder = fullfile(main_results_folder, 'dubinscar_brs_results_20250516_153903_v1_turn57-57');
+% brs_folder = fullfile(main_results_folder, 'dubinscar_brs_results_20250516_153839_v1_turn57-57');
+brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250428_171755_vx30-30_dvmax20-20');
 
 % Optional: Path to FRS results folder - required for FRS trajectory visualization
 frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250501_103930_vx20-20_dvmax40-40');
@@ -55,7 +56,9 @@ trajectory_file = 'trajectory_data.mat';  % For loading/saving trajectory data
 
 % - Double Integrator: [position; velocity]
 % - Dubins Car:       [x; y; theta] (positvision and heading) in meters and radians [2, 2, -pi * 5/6]
-xinit = [2, 2, -pi * 5/6]; 
+% xinit = [2, 2, -pi * 5/6]; 
+xinit = [deg2rad(100), deg2rad(20), deg2rad(2)];
+
 % Trajectory computation method - options: 'arrival', 'gradient', or 'legacy'
 % 'arrival'  - Uses time-of-arrival function for guidance (fastest)
 % 'gradient' - Uses pre-computed gradients for all time slices (more accurate)
@@ -612,80 +615,30 @@ if visualize_trajectory
             end
             
             % Each model type needs specific legacy computation handling
-            if strcmp(model_type, 'bicycle') && is_steered_model
-                % Steered bicycle model
-                try
-                    legacy_opts = struct();
-                    legacy_opts.velocityIdx = velocity_idx;
-                    legacy_opts.dvMaxIdx = control_idx;
-                    legacy_opts.visualize = false;
-                    legacy_opts.maxTime = max_time;
-                    legacy_opts.uMode = uMode;
-                    
-                    if strcmp(trajectory_type, 'brs') && use_frs_constraint
-                        legacy_opts.useFRS = true;
-                        legacy_opts.frs_folder = frs_folder;
-                        legacy_opts.frsWeight = frs_weight;
-                    else
-                        legacy_opts.useFRS = false;
-                    end
-                    
-                    [traj, traj_tau, traj_u, metrics] = compute_trajectory_steered_from_folders(active_folder, xinit, legacy_opts);
-                catch err
-                    error('Error in legacy trajectory computation: %s', err.message);
-                end
-            elseif strcmp(model_type, 'bicycle')
-                % Standard bicycle model
-                try
-                    legacy_opts = struct();
-                    legacy_opts.velocityIdx = velocity_idx;
-                    legacy_opts.mzMaxIdx = control_idx;
-                    legacy_opts.visualize = false;
-                    legacy_opts.maxTime = max_time;
-                    legacy_opts.uMode = uMode;
-                    
-                    if strcmp(trajectory_type, 'brs') && use_frs_constraint
-                        legacy_opts.useFRS = true;
-                        legacy_opts.frs_folder = frs_folder;
-                        legacy_opts.frsWeight = frs_weight;
-                    else
-                        legacy_opts.useFRS = false;
-                    end
-                    
-                    [traj, traj_tau, traj_u, metrics] = compute_trajectory_from_folders(active_folder, xinit, legacy_opts);
-                catch err
-                    error('Error in legacy trajectory computation: %s', err.message);
-                end
-            else
-                % Legacy methods don't explicitly support other models
-                warning('Legacy trajectory computation methods may not support %s model. Using computeOptTraj instead.', model_type);
+            % Legacy methods don't explicitly support other models
+            warning('Legacy trajectory computation methods may not support %s model. Using computeOptTraj instead.', model_type);
+            
+            try
+                % Use bare computeOptTraj function
+                TrajextraArgs = struct();
+                TrajextraArgs.uMode = uMode;
+                TrajextraArgs.visualize = false;
                 
-                try
-                    % Use bare computeOptTraj function
-                    TrajextraArgs = struct();
-                    TrajextraArgs.uMode = uMode;
-                    TrajextraArgs.visualize = false;
-                    
-                    % Flip data time points for backward direction
-                    dataTraj = flip(data_value_function_full, length(g.N) + 1);
-                    tau_reversed = flip(tau);
-                    
-                    [traj, traj_tau, traj_u] = computeOptTraj(g, dataTraj, tau_reversed, dynSys, TrajextraArgs);
-                    
-                    % Create a basic metrics structure
-                    metrics = struct();
-                    metrics.time_to_target = traj_tau(end) - traj_tau(1);
-                    metrics.final_set_value = eval_u(g, data0, traj(:,end));
-                    metrics.control_energy = sum(sum(traj_u.^2));
-                    
-                    if strcmp(trajectory_type, 'brs')
-                        metrics.reached_target = (metrics.final_set_value <= 0);
-                    else
-                        metrics.escaped_target = (metrics.final_set_value > 0);
-                    end
-                catch err
-                    error('Error in computeOptTraj: %s', err.message);
+                % Flip data time points for backward direction
+                
+                [traj, traj_tau, traj_u] = computeOptTraj(g, data_value_function_full, tau, dynSys, TrajextraArgs);
+                
+                % Create a basic metrics structure
+                metrics = struct();
+                metrics.time_to_target = traj_tau(end) - traj_tau(1);
+                metrics.final_set_value = eval_u(g, data0, traj(:,end));
+                if strcmp(trajectory_type, 'brs')
+                    metrics.reached_target = (metrics.final_set_value <= 0);
+                else
+                    metrics.escaped_target = (metrics.final_set_value > 0);
                 end
+            catch err
+                error('Error in computeOptTraj: %s', err.message);
             end
         else
             % Use the optimized trajectory computation
