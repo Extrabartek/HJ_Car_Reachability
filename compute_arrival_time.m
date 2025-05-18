@@ -25,6 +25,8 @@ end
 % Initialize arrival time with infinity (points outside BRS)
 arrival_time = inf(grid_dims);
 
+num_times = size(tau, 2);
+
 % Process each time step
 for t_idx = 1:1:num_times
     % Extract value function at current time
@@ -46,7 +48,7 @@ for t_idx = 1:1:num_times
     
     % Optional: Display progress
     if mod(t_idx, 10) == 0
-        fprintf('Computing arrival time: %.1f%% complete\n', 100*(num_times-t_idx+1)/num_times);
+        fprintf('Computing arrival time: %.1f%% complete\n', 100*(t_idx)/num_times);
     end
 end
 

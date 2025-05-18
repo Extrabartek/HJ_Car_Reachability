@@ -1,4 +1,4 @@
-function visualizeCarTrajectory(traj, traj_tau, g, data_brs, data0, vx, data_brs_full,varargin)
+function visualizeCarTrajectory(traj, tau, traj_tau, g, data_brs, data0, vx, data_brs_full,varargin)
 % VISUALIZECARTRAJECTORY Creates enhanced visualization of car trajectory
 %
 % This function creates a synchronized visualization with three views:
@@ -152,10 +152,10 @@ try
             fprintf('Gradient computation successful.\n');
             % Example usage:
             % 1. Compute arrival time (continuous time values)
-            arrival_time = compute_arrival_time(data_brs_full, traj_tau);
+            arrival_time = compute_arrival_time(data_brs_full, tau);
             
             % 2. Compute entry-time steering gradients (component 3 for steering)
-            steering_gradients = computeEntryTimeGradients(g, data_brs_full, arrival_time, 3, traj_tau);
+            steering_gradients = computeEntryTimeGradients(g, data_brs_full, arrival_time, 3, tau);
         catch err
             warning('Error computing gradients: %s\nSteering visualization will be disabled.', err.message);
         end
@@ -357,7 +357,7 @@ try
         xs2_deg = g.xs{2}(:,:,1) * 180/pi;  % sideslip angle
         
         % Create the gradient visualization
-        gradient_vis = pcolor(xs2_deg, xs1_deg, delta_gradient);
+        gradient_vis = pcolor(xs2_deg, xs1_deg, delta_gradient(:,:,delta_idx));
         gradient_vis.EdgeColor = 'none';
         
         % Use custom colormap for gradients: blue-white-red for negative/positive
@@ -693,7 +693,7 @@ try
         userData.steering_vis_enabled = true;
         userData.gradient_vis = gradient_vis;
         userData.h_traj_marker = h_traj_marker;
-        userData.all_gradients = all_gradients;
+        userData.delta_gradient = delta_gradient;
         userData.g = g;
         userData.middle_panel = middle_panel;
     else
@@ -902,7 +902,7 @@ function updateVisualization(idx, userData)
         [~, delta_idx] = min(abs(userData.g.xs{3}(1,1,:) - current_delta));
         
         % Extract the steering gradient at the current slice
-        delta_gradient = squeeze(userData.all_gradients{3}(:,:,delta_idx));
+        delta_gradient = squeeze(userData.delta_gradient(:,:,delta_idx));
         
         % Update visualization
         set(userData.gradient_vis, 'CData', delta_gradient);

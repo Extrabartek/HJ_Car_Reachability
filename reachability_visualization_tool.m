@@ -27,7 +27,7 @@ main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Re
 
 %% Reachability result selection
 % Path to the reachability results folder
-brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250502_155507_vx20-20_dvmax40-40');
+brs_folder = fullfile(main_results_folder, 'dubinscar_brs_results_20250516_153903_v1_turn57-57');
 
 % Optional: Path to FRS results folder - required for FRS trajectory visualization
 frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250501_103930_vx20-20_dvmax40-40');
@@ -50,11 +50,12 @@ compute_new_trajectory = true;   % Set to false to load a previously saved traje
 trajectory_file = 'trajectory_data.mat';  % For loading/saving trajectory data
 
 % Initial state for trajectory computation - format depends on system type:
-% - Bicycle Model:    [gamma; beta; delta] (yaw rate, sideslip angle, steering angle) in radians
-% - Double Integrator: [position; velocity]
-% - Dubins Car:       [x; y; theta] (position and heading) in meters and radians [2, 2, -pi * 5/6]
-xinit = [deg2rad(5), deg2rad(3), deg2rad(2)];
+% - Bicycle Model:    [gamma; beta; delta] (yaw rate, sideslip angle,
+% steering angle) in radians [deg2rad(5), deg2rad(3), deg2rad(2)];
 
+% - Double Integrator: [position; velocity]
+% - Dubins Car:       [x; y; theta] (positvision and heading) in meters and radians [2, 2, -pi * 5/6]
+xinit = [2, 2, -pi * 5/6]; 
 % Trajectory computation method - options: 'arrival', 'gradient', or 'legacy'
 % 'arrival'  - Uses time-of-arrival function for guidance (fastest)
 % 'gradient' - Uses pre-computed gradients for all time slices (more accurate)
@@ -1115,7 +1116,7 @@ if visualize_trajectory
                         border_color = [0.8, 0, 0];  % Dark red
                     end
                     
-                    visualizeCarTrajectory(traj, traj_tau, g, ...
+                    visualizeCarTrajectory(traj, tau, traj_tau, g, ...
                         data_value_function, data0, vx, ...
                         data_value_function_full,...
                         'x0', 0, 'y0', 0, 'psi0', 0, ...
@@ -1138,7 +1139,7 @@ if visualize_trajectory
                     if save_video && (contains(err.message, 'VideoWriter') || contains(err.message, 'video'))
                         fprintf('Attempting visualization without video recording...\n');
                         try
-                            visualizeCarTrajectory(traj, traj_tau, g, data_value_function, data0, vx, ...
+                            visualizeCarTrajectory(traj, tau, traj_tau, g, data_value_function, data0, vx, ...
                                 'x0', 0, 'y0', 0, 'psi0', 0, ...
                                 'saveVideo', false, ...
                                 'carLength', car_length, ...
