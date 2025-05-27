@@ -28,7 +28,7 @@ main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Re
 %% Reachability result selection
 % Path to the reachability results folder
 % brs_folder = fullfile(main_results_folder, 'dubinscar_brs_results_20250516_153839_v1_turn57-57');
-brs_folder = fullfile(main_results_folder, 'steered_brs_results_20250428_171755_vx30-30_dvmax20-20');
+brs_folder = fullfile(main_results_folder, 'bicycle_brs_results_20250526_173128_vx20-20_dvmax40-40');
 
 % Optional: Path to FRS results folder - required for FRS trajectory visualization
 frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250501_103930_vx20-20_dvmax40-40');
@@ -57,18 +57,18 @@ trajectory_file = 'trajectory_data.mat';  % For loading/saving trajectory data
 % - Double Integrator: [position; velocity]
 % - Dubins Car:       [x; y; theta] (positvision and heading) in meters and radians [2, 2, -pi * 5/6]
 % xinit = [2, 2, -pi * 5/6]; 
-xinit = [deg2rad(100), deg2rad(20), deg2rad(2)];
+xinit = [deg2rad(90), deg2rad(6.2), deg2rad(4.8)];
 
 % Trajectory computation method - options: 'arrival', 'gradient', or 'legacy'
 % 'arrival'  - Uses time-of-arrival function for guidance (fastest)
 % 'gradient' - Uses pre-computed gradients for all time slices (more accurate)
 % 'legacy'   - Uses the older computeOptTraj or compute_trajectory_steered_from_folders
-trajectory_method = 'gradient';  
+trajectory_method = 'legacy';  
 
 % Parameters for trajectory computation
 velocity_idx = 1;               % Index of velocity to use from data (for bicycle models)
 control_idx = 1;                % Index of control limit to use 
-max_time = 2.5;                % Maximum trajectory time (seconds)
+max_time = 5.0;                % Maximum trajectory time (seconds)
 use_frs_constraint = false;     % Use FRS for safety constraints (for BRS trajectories only)
 frs_weight = 0.0;               % Weight for FRS constraints (0-1)
 
@@ -618,7 +618,7 @@ if visualize_trajectory
             % Legacy methods don't explicitly support other models
             warning('Legacy trajectory computation methods may not support %s model. Using computeOptTraj instead.', model_type);
             
-            try
+            
                 % Use bare computeOptTraj function
                 TrajextraArgs = struct();
                 TrajextraArgs.uMode = uMode;
@@ -637,9 +637,6 @@ if visualize_trajectory
                 else
                     metrics.escaped_target = (metrics.final_set_value > 0);
                 end
-            catch err
-                error('Error in computeOptTraj: %s', err.message);
-            end
         else
             % Use the optimized trajectory computation
             fprintf('Using optimized trajectory computation with method: %s\n', trajectory_method);
@@ -677,7 +674,7 @@ if visualize_trajectory
             
             % try
                 % Compute trajectory using optimized method
-                [traj, traj_tau, traj_u, metrics] = computeOptimizedTrajectory(g, data_value_function_full, tau, xinit, dynSys, opt_options);
+                % [traj, traj_tau, traj_u, metrics] = computeOptimizedTrajectory(g, data_value_function_full, tau, xinit, dynSys, opt_options);
             % catch err
             %     error('Error in optimized trajectory computation: %s', err.message);
             % end
@@ -847,10 +844,13 @@ if visualize_trajectory
                 
                 % Also create a figure showing the steering angle over time
                 figure('Name', 'Steering Angle vs Time');
+                hold on;
                 plot(traj_tau, traj_deg(3,:), 'r-', 'LineWidth', 2);
+                % plot(traj_tau(1:100), 180/pi * cumtrapz(traj_tau(1:100), traj_u) + traj_deg(3,1));
                 xlabel('Time (s)', 'FontSize', 12);
                 ylabel('Steering Angle (degrees)', 'FontSize', 12);
                 title(sprintf('%s Trajectory: Steering Angle vs Time', main_set_name), 'FontSize', 14);
+                hold off;
                 grid on;
                 
             else

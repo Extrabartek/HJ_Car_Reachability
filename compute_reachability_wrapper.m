@@ -17,11 +17,11 @@ clear; clc;
 
 %% Select if you want to load or produce results
 generate_results = true;     % Set to false to load existing results
-visualize_results = true;    % Set to false to skip visualization
+visualize_results = false;    % Set to false to skip visualization
 save_plots = false;          % Set to true to save visualization figures
 
 %% Model and computation type
-modelType = 'dubinsCar';      % Options: 'bicycle', 'doubleInt', 'dubinsCar'
+modelType = 'bicycle';      % Options: 'bicycle', 'doubleInt', 'dubinsCar'
 direction = 'backward';      % Options: 'backward' (BRS) or 'forward' (FRS)
 controlType = 'dv';          % Options: 'mz' (yaw moment) or 'dv' (steering rate)
                              % (only used for bicycle model)
@@ -29,7 +29,7 @@ controlType = 'dv';          % Options: 'mz' (yaw moment) or 'dv' (steering rate
 %% Model-specific parameters
 
 % Bicycle model parameters
-velocities = [5];           % Vehicle velocities to test [m/s] (for bicycle model)
+velocities = [20];           % Vehicle velocities to test [m/s] (for bicycle model)
 
 % Double Integrator parameters (if modelType = 'doubleInt')
 doubleint_dims = 1:2;        % Dimensions to use
@@ -45,26 +45,26 @@ dubins_drange = {[0;0;0], [0;0;0]}; % Disturbance range
 % - If modelType = 'bicycle' and controlType = 'dv': Max steering rates [deg/s]
 % - If modelType = 'doubleInt': Acceleration limits [m/s²]
 % - If modelType = 'dubinsCar': Turning rate limits [deg/s]
-control_limits = [rad2deg(1)];       % Will be converted to radians for 'dv' and 'dubinsCar'
+control_limits = [40];       % Will be converted to radians for 'dv' and 'dubinsCar'
 
 %% Time parameters
-tMax = 2.0;                  % Maximum simulation time [s]
-dt = 0.1;                   % Time step [s]
+tMax = 0.5;                  % Maximum simulation time [s]
+dt = 0.001;                   % Time step [s]
 
 %% Grid parameters
 % Grid size: Number of grid points in each dimension
-gridSize = [41, 41, 41];               % Empty = use defaults based on model type
+gridSize = [121, 121, 91];               % Empty = use defaults based on model type
                              % Default for 'bicycle'+'mz': [71, 71]
                              % Default for 'bicycle'+'dv': [51, 51, 51]
                              % Default for 'doubleInt': [101, 101]
                              % Default for 'dubinsCar': [51, 51, 51]
 
 % Grid limits in degrees (will be converted to radians for angles)
-gridMin_deg = [-5, -5, -180];            % Empty = use defaults based on model type
-gridMax_deg = [5, 5, 180];            % Empty = use defaults based on model type
+gridMin_deg = [-200, -30, -25];            % Empty = use defaults based on model type
+gridMax_deg = [200, 30, 25];            % Empty = use defaults based on model type
 
 % Target set size in degrees (will be converted to radians for angles)
-targetSize_deg = [1, 1, 2*pi];         % Empty = use defaults based on model type
+targetSize_deg = [20, 3, 4];         % Empty = use defaults based on model type
 
 %% Advanced parameters
 uMode = '';                  % Control strategy: 'min', 'max', or '' (empty = use default)

@@ -553,7 +553,7 @@ for v_idx = 1:length(velocity_range)
             result_data.dims = opts.dims;
         end
         
-        save(fullfile(result_folder, result_filename), '-struct', 'result_data');
+        save(fullfile(result_folder, result_filename), '-struct', 'result_data', '-v7.3');
         
         fprintf('Saved result to %s\n', fullfile(result_folder, result_filename));
     end
@@ -589,7 +589,7 @@ elseif strcmp(opts.modelType, 'dubinscar')
     combined_results.disturbance_range = opts.dRange;
 end
 
-save(fullfile(result_folder, [type_prefix, '_combined_results.mat']), '-struct', 'combined_results');
+save(fullfile(result_folder, [type_prefix, '_combined_results.mat']), '-struct', 'combined_results', '-v7.3');
 
 disp('Computation complete!');
 disp(['Results saved to: ', result_folder]);

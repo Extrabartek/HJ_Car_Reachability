@@ -685,8 +685,9 @@ try
         'h_velocity_vector', h_velocity_vector, ...
         'velocity_color', velocity_color, ...
         'isBRS', opts.isBRS, ...
-        'final_text', final_text ...
-        );
+        'final_text', final_text, ...
+        'data_brs', data_brs ...
+        ); % Store BRS data for updating
     
     % Store steering visualization data if available
     if steering_vis_enabled
@@ -696,6 +697,7 @@ try
         userData.delta_gradient = delta_gradient;
         userData.g = g;
         userData.middle_panel = middle_panel;
+        userData.h_brs_contour = h_brs_contour;  % Store BRS contour handle
     else
         userData.steering_vis_enabled = false;
     end
@@ -744,8 +746,8 @@ try
             % Find the index in the original trajectory closest to current time
             [~, idx] = min(abs(traj_tau - current_time));
             
-            % Update visualization
-            updateVisualization(idx, userData);
+            % Update visualization - store returned userData
+            userData = updateVisualization(idx, userData);
             
             % Capture frame for video
             frame_data = getframe(fig);
@@ -762,7 +764,7 @@ try
         fprintf('Video saved successfully to: %s\n', opts.videoFile);
     else
         % Interactive mode - show the initial frame
-        updateVisualization(1, userData);
+        userData = updateVisualization(1, userData);
         fprintf('Interactive mode ready. Use the slider to navigate or click Play to animate.\n');
     end
 
@@ -799,8 +801,11 @@ function updateVisualizationCallback(src, ~)
     % Get the current index from the slider
     idx = round(get(src, 'Value'));
     
-    % Call the updateVisualization function with the userData
-    updateVisualization(idx, userData);
+    % Call the updateVisualization function with the userData and store the updated userData
+    userData = updateVisualization(idx, userData);
+    
+    % Save the updated userData
+    set(fig, 'UserData', userData);
 end
 
 %% Callback function for the timer - will have access to figure's UserData
@@ -826,8 +831,11 @@ function updateFromTimerCallback(~, ~)
     % Update slider position
     set(userData.progress_bar, 'Value', next_idx);
     
-    % Update visualization
-    updateVisualization(next_idx, userData);
+    % Update visualization and store the updated userData
+    userData = updateVisualization(next_idx, userData);
+    
+    % Save updated userData
+    set(fig, 'UserData', userData);
 end
 
 %% Callback function for play/pause button
@@ -867,7 +875,7 @@ function onClose(src, ~)
 end
 
 %% Main visualization update function
-function updateVisualization(idx, userData)
+function userData = updateVisualization(idx, userData)
     % Current state and time
     current_time = userData.traj_tau(idx);
     current_gamma = userData.gamma(idx);
@@ -912,6 +920,23 @@ function updateVisualization(idx, userData)
         
         % Update the title with current steering angle
         title(userData.middle_panel, sprintf('Steering Gradient at δ = %.1f°', current_delta*180/pi), 'FontSize', 14);
+        
+        % Extract current BRS slice and update the contour
+        if isfield(userData, 'data_brs')
+            % Get grid values in degrees
+            xs1_deg = userData.g.xs{1}(:,:,1) * 180/pi;  % yaw rate
+            xs2_deg = userData.g.xs{2}(:,:,1) * 180/pi;  % sideslip angle
+            
+            % Get BRS slice at current steering angle
+            value_slice = squeeze(userData.data_brs(:,:,delta_idx));
+            
+            % Delete old contour and create new one
+            delete(userData.h_brs_contour);
+            
+            % Set current axes and draw new contour
+            axes(userData.middle_panel);
+            [~, userData.h_brs_contour] = contour(xs2_deg, xs1_deg, value_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
+        end
         
         % Update colormap scaling for better visualization
         max_grad = max(abs(delta_gradient(:)));
@@ -1126,6 +1151,9 @@ function updateVisualization(idx, userData)
     
     % Update display
     drawnow;
+    
+    % Return updated userData
+    return;
 end
 
 end
