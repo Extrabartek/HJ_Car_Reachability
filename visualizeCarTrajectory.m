@@ -3,19 +3,19 @@ function visualizeCarTrajectory(traj, tau, traj_tau, g, data_brs, data0, vx, dat
 %
 % This function creates a synchronized visualization with three views:
 % 1. Top-down car-centric view (left): Shows car fixed at center with the world moving underneath
-% 2. Steering gradient view (middle): Shows gradient of value function with respect to steering angle
-% 3. 3D state-space view (right): Shows trajectory in state space with BRS/FRS and target set
+% 2. Gradient view (middle): Shows gradient of value function with respect to control variable
+% 3. 3D/2D state-space view (right): Shows trajectory in state space with BRS/FRS and target set
 %
 % Inputs:
-%   traj        - State trajectory [gamma; beta; delta] over time
-%                 gamma: yaw rate (rad/s)
-%                 beta: side slip angle (rad)
-%                 delta: steering angle (rad)
+%   traj        - State trajectory over time
+%                 For 2D model: [gamma; beta] (yaw rate, sideslip angle)
+%                 For 3D model: [gamma; beta; delta] (yaw rate, sideslip, steering)
 %   traj_tau    - Time points corresponding to trajectory
 %   g           - Grid structure for state space
 %   data_brs    - Value function data (BRS or FRS) for visualization
 %   data0       - Target set data (value function)
 %   vx          - Constant longitudinal velocity (m/s)
+%   data_brs_full - Full time series value function data
 %   varargin    - Optional parameter-value pairs:
 %                 'x0'           - Initial x position (default: 0)
 %                 'y0'           - Initial y position (default: 0)
@@ -65,9 +65,7 @@ opts = p.Results;
 
 % Check if we have a 3D BRS (needed for 3D visualization)
 is_3d_brs = ndims(data_brs) == 3;
-if ~is_3d_brs
-    warning('BRS/FRS data is not 3D. The right panel will show a 2D view instead of 3D.');
-end
+is_2d_brs = ndims(data_brs) == 2;
 
 %% Setup visual styling based on trajectory type (BRS or FRS)
 % Set appropriate colors and titles based on trajectory type
@@ -77,7 +75,7 @@ if opts.isBRS
     start_color = [0, 0, 0.8];  % Dark blue for start point
     end_color = [0, 0.6, 0]; % Green for end point (target reached)
     main_title = sprintf('BRS Trajectory Visualization (v_x = %.1f m/s)', vx);
-    brs_surface_color = [0, 0, 0.7]; % Blue for BRS surface
+    brs_surface_color = [0, 0, 0]; % Black for BRS surface
     final_text = 'Target Reached';
 else
     % FRS trajectory styling (red scheme)
@@ -123,8 +121,18 @@ end
 try
     %% Transform trajectory to physical coordinates
     fprintf('Transforming trajectory to physical coordinates...\n');
-    pos_traj = transformTrajectory(traj, traj_tau, vx, ...
-        'x0', opts.x0, 'y0', opts.y0, 'psi0', opts.psi0, 'visualize', false);
+    
+    % Handle both 2D and 3D trajectories
+    if size(traj, 1) == 2
+        % For 2D model, add zero steering angle for transformation
+        traj_extended = [traj; zeros(1, size(traj, 2))];
+        pos_traj = transformTrajectory(traj_extended, traj_tau, vx, ...
+            'x0', opts.x0, 'y0', opts.y0, 'psi0', opts.psi0, 'visualize', false);
+    else
+        % For 3D model, use as is
+        pos_traj = transformTrajectory(traj, traj_tau, vx, ...
+            'x0', opts.x0, 'y0', opts.y0, 'psi0', opts.psi0, 'visualize', false);
+    end
 
     % Extract trajectory components
     x = pos_traj.x;
@@ -140,27 +148,46 @@ try
     front_overhang = (opts.carLength - opts.wheelBase) * 0.4;
     rear_overhang = (opts.carLength - opts.wheelBase) * 0.6;
 
-    %% Pre-compute gradients for steering visualization 
-    steering_vis_enabled = false;
+    %% Pre-compute gradients for control visualization 
+    gradient_vis_enabled = false;
+    gradient_component = 1; % Default to yaw rate component
+    gradient_type = 'unknown';
     
-    % Compute gradients only if we have 3D data (needed for steering gradient)
+    % Compute gradients for both 2D and 3D models
     if is_3d_brs
         try
-            fprintf('Computing gradients for steering visualization...\n');
+            fprintf('Computing gradients for 3D steering visualization...\n');
             all_gradients = computeGradients(g, data_brs);
-            steering_vis_enabled = true;
-            fprintf('Gradient computation successful.\n');
-            % Example usage:
-            % 1. Compute arrival time (continuous time values)
-            arrival_time = compute_arrival_time(data_brs_full, tau);
+            gradient_vis_enabled = true;
+            gradient_component = 3; % Steering angle component
+            gradient_type = 'steering';
+            fprintf('3D Gradient computation successful.\n');
             
-            % 2. Compute entry-time steering gradients (component 3 for steering)
-            steering_gradients = computeEntryTimeGradients(g, data_brs_full, arrival_time, 3, tau);
+            % Compute arrival time and entry-time gradients
+            arrival_time = compute_arrival_time(data_brs_full, tau);
+            control_gradients = computeEntryTimeGradients(g, data_brs_full, arrival_time, gradient_component, tau);
+            
         catch err
-            warning('Error computing gradients: %s\nSteering visualization will be disabled.', err.message);
+            warning('Error computing 3D gradients: %s\nSteering visualization will be disabled.', err.message);
+        end
+    elseif is_2d_brs
+        try
+            fprintf('Computing gradients for 2D yaw moment visualization...\n');
+            all_gradients = computeGradients(g, data_brs);
+            gradient_vis_enabled = true;
+            gradient_component = 1; % Yaw rate component (gamma) 
+            gradient_type = 'yaw_moment';
+            fprintf('2D Gradient computation successful.\n');
+            
+            % Compute arrival time and entry-time gradients
+            arrival_time = compute_arrival_time(data_brs_full, tau);
+            control_gradients = computeEntryTimeGradients(g, data_brs_full, arrival_time, gradient_component, tau);
+            
+        catch err
+            warning('Error computing 2D gradients: %s\nYaw moment visualization will be disabled.', err.message);
         end
     else
-        warning('Value function is not 3D. Steering visualization will be disabled.');
+        warning('Value function is neither 2D nor 3D. Gradient visualization will be disabled.');
     end
     
     %% Setup figure
@@ -170,10 +197,10 @@ try
 
     % Create layout with three main panels side by side
     left_panel = subplot(1, 3, 1);      % Car view 
-    middle_panel = subplot(1, 3, 2);    % Steering gradient view
+    middle_panel = subplot(1, 3, 2);    % Gradient view
     right_panel = subplot(1, 3, 3);     % State space view
 
-    %% Setup 3D state-space view (right panel)
+    %% Setup state-space view (right panel)
     axes(right_panel);
     hold on;
 
@@ -238,7 +265,6 @@ try
         view([-30, 30]);
         
         % Add legend with valid handles only
-        % First collect valid handles and their labels
         legend_handles = [];
         legend_labels = {};
         
@@ -290,7 +316,7 @@ try
         grid on;
         box on;
     else
-        % Fallback to 2D visualization if BRS is only 2D
+        % 2D visualization for standard bicycle model
         % Plot BRS boundary
         if opts.isBRS
             [C_brs, h_brs] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_brs, [0 0], 'b-', 'LineWidth', 2);
@@ -338,27 +364,84 @@ try
               ax_limits(3)-axis_margin, ax_limits(4)+axis_margin]);
     end
 
-    %% Setup steering gradient visualization (middle panel)
+    %% Setup gradient visualization (middle panel)
     axes(middle_panel);
     
-    if steering_vis_enabled
-        % Find the initial steering angle
-        initial_delta = traj(3,1);
-        
-        % Find the closest slice to the current steering angle
-        [~, delta_idx] = min(abs(g.xs{3}(1,1,:) - initial_delta));
-        
-        % Extract the value function slice and steering gradient slice
-        value_slice = squeeze(data_brs(:,:,delta_idx));
-        delta_gradient = squeeze(steering_gradients);
-        
-        % Convert grid to degrees for visualization
-        xs1_deg = g.xs{1}(:,:,1) * 180/pi;  % yaw rate
-        xs2_deg = g.xs{2}(:,:,1) * 180/pi;  % sideslip angle
-        
-        % Create the gradient visualization
-        gradient_vis = pcolor(xs2_deg, xs1_deg, delta_gradient(:,:,delta_idx));
-        gradient_vis.EdgeColor = 'none';
+    if gradient_vis_enabled
+        if is_3d_brs
+            % 3D model: Find the initial steering angle and extract slice
+            initial_delta = traj(3,1);
+            
+            % Find the closest slice to the current steering angle
+            [~, delta_idx] = min(abs(g.xs{3}(1,1,:) - initial_delta));
+            
+            % Extract the value function slice and steering gradient slice
+            value_slice = squeeze(data_brs(:,:,delta_idx));
+            delta_gradient = squeeze(control_gradients(:,:,delta_idx));
+            
+            % Convert grid to degrees for visualization
+            xs1_deg = g.xs{1}(:,:,1) * 180/pi;  % yaw rate
+            xs2_deg = g.xs{2}(:,:,1) * 180/pi;  % sideslip angle
+            
+            % Create the gradient visualization
+            gradient_vis = pcolor(xs2_deg, xs1_deg, delta_gradient);
+            gradient_vis.EdgeColor = 'none';
+            
+            % Add BRS contour at 0 value
+            hold on;
+            [~, h_brs_contour] = contour(xs2_deg, xs1_deg, value_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
+            
+            % Add trajectory marker
+            h_traj_marker = plot(traj(2,1)*180/pi, traj(1,1)*180/pi, 'ko', 'MarkerSize', 12, 'LineWidth', 2);
+            
+            % Add labels
+            xlabel('Sideslip Angle \beta (deg)', 'FontSize', 12);
+            ylabel('Yaw Rate \gamma (deg/s)', 'FontSize', 12);
+            title(sprintf('Steering Gradient at \delta = %.1f°', initial_delta*180/pi), 'FontSize', 14);
+            
+            % Add text explaining the gradient meaning
+            text_x = min(xs2_deg(:)) + 0.1*(max(xs2_deg(:))-min(xs2_deg(:)));
+            text_y_blue = max(xs1_deg(:)) - 0.05*(max(xs1_deg(:))-min(xs1_deg(:)));
+            text_y_red = max(xs1_deg(:)) - 0.1*(max(xs1_deg(:))-min(xs1_deg(:)));
+            
+            text(text_x, text_y_blue, 'Blue = Steer Right (\delta > 0)', 'Color', 'blue', 'FontWeight', 'bold');
+            text(text_x, text_y_red, 'Red = Steer Left (\delta < 0)', 'Color', 'red', 'FontWeight', 'bold');
+            
+        else
+            % 2D model: Show yaw rate gradient directly
+            % Convert grid to degrees for visualization
+            xs1_deg = g.xs{1} * 180/pi;  % yaw rate
+            xs2_deg = g.xs{2} * 180/pi;  % sideslip angle
+            
+            % Create the gradient visualization
+            gradient_vis = pcolor(xs2_deg, xs1_deg, control_gradients);
+            gradient_vis.EdgeColor = 'none';
+            
+            % Add BRS contour at 0 value
+            hold on;
+            [~, h_brs_contour] = contour(xs2_deg, xs1_deg, data_brs, [0 0], 'LineWidth', 2, 'Color', 'k');
+            
+            % Add trajectory marker
+            h_traj_marker = plot(traj(2,1)*180/pi, traj(1,1)*180/pi, 'ko', 'MarkerSize', 12, 'LineWidth', 2);
+            
+            % Add labels
+            xlabel('Sideslip Angle \beta (deg)', 'FontSize', 12);
+            ylabel('Yaw Rate \gamma (deg/s)', 'FontSize', 12);
+            title('Yaw Rate Gradient (\partial V/\partial \gamma)', 'FontSize', 14);
+            
+            % Add text explaining the gradient meaning for yaw moment control
+            text_x = min(xs2_deg(:)) + 0.1*(max(xs2_deg(:))-min(xs2_deg(:)));
+            text_y_blue = max(xs1_deg(:)) - 0.05*(max(xs1_deg(:))-min(xs1_deg(:)));
+            text_y_red = max(xs1_deg(:)) - 0.1*(max(xs1_deg(:))-min(xs1_deg(:)));
+            
+            if opts.isBRS
+                text(text_x, text_y_blue, 'Blue = M_z > 0 (CCW moment)', 'Color', 'blue', 'FontWeight', 'bold');
+                text(text_x, text_y_red, 'Red = M_z < 0 (CW moment)', 'Color', 'red', 'FontWeight', 'bold');
+            else
+                text(text_x, text_y_blue, 'Blue = M_z < 0 (CW moment)', 'Color', 'blue', 'FontWeight', 'bold');
+                text(text_x, text_y_red, 'Red = M_z > 0 (CCW moment)', 'Color', 'red', 'FontWeight', 'bold');
+            end
+        end
         
         % Use custom colormap for gradients: blue-white-red for negative/positive
         n = 256;
@@ -374,49 +457,37 @@ try
         
         colormap(middle_panel, cmap);
         c = colorbar;
-        title(c, '∂V/∂δ');
+        
+        if is_3d_brs
+            title(c, '\partial V/\partial \delta');
+        else
+            title(c, '\partial V/\partial \gamma');
+        end
         
         % Use symmetric colorbar for better visualization
-        max_grad = max(abs(delta_gradient(:)));
-        clim([-max_grad, max_grad]);
-        
-        % Add BRS contour at 0 value
-        hold on;
-        [~, h_brs_contour] = contour(xs2_deg, xs1_deg, value_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
-        
-        % Add trajectory marker
-        h_traj_marker = plot(traj(2,1)*180/pi, traj(1,1)*180/pi, 'ko', 'MarkerSize', 12, 'LineWidth', 2);
-        
-        % Add labels
-        xlabel('Sideslip Angle \beta (deg)', 'FontSize', 12);
-        ylabel('Yaw Rate \gamma (deg/s)', 'FontSize', 12);
-        title(sprintf('Steering Gradient at δ = %.1f°', initial_delta*180/pi), 'FontSize', 14);
-        
-        % Add text explaining the gradient meaning
-        if opts.isBRS
-            text_x = min(xs2_deg(:)) + 0.1*(max(xs2_deg(:))-min(xs2_deg(:)));
-            text_y_blue = max(xs1_deg(:)) - 0.05*(max(xs1_deg(:))-min(xs1_deg(:)));
-            text_y_red = max(xs1_deg(:)) - 0.1*(max(xs1_deg(:))-min(xs1_deg(:)));
-            
-            text(text_x, text_y_blue, 'Blue = Steer Right (δ̇ > 0)', 'Color', 'blue', 'FontWeight', 'bold');
-            text(text_x, text_y_red, 'Red = Steer Left (δ̇ < 0)', 'Color', 'red', 'FontWeight', 'bold');
+        if is_3d_brs
+            max_grad = max(abs(delta_gradient(:)));
         else
-            text_x = min(xs2_deg(:)) + 0.1*(max(xs2_deg(:))-min(xs2_deg(:)));
-            text_y_blue = max(xs1_deg(:)) - 0.05*(max(xs1_deg(:))-min(xs1_deg(:)));
-            text_y_red = max(xs1_deg(:)) - 0.1*(max(xs1_deg(:))-min(xs1_deg(:)));
-            
-            text(text_x, text_y_blue, 'Blue = Steer Right (δ̇ > 0)', 'Color', 'blue', 'FontWeight', 'bold');
-            text(text_x, text_y_red, 'Red = Steer Left (δ̇ < 0)', 'Color', 'red', 'FontWeight', 'bold');
+            max_grad = max(abs(control_gradients(:)));
+        end
+        
+        if max_grad > 0
+            clim([-max_grad, max_grad]);
         end
         
         grid on;
         
         % Set axis limits to match the right panel
-        xlim([min(xs2_deg(:)), max(xs2_deg(:))]);
-        ylim([min(xs1_deg(:)), max(xs1_deg(:))]);
+        if is_3d_brs
+            xlim([min(xs2_deg(:)), max(xs2_deg(:))]);
+            ylim([min(xs1_deg(:)), max(xs1_deg(:))]);
+        else
+            xlim([min(xs2_deg(:)), max(xs2_deg(:))]);
+            ylim([min(xs1_deg(:)), max(xs1_deg(:))]);
+        end
     else
-        % If steering visualization is not available, show a message
-        text(0.5, 0.5, 'Steering gradient visualization not available', ...
+        % If gradient visualization is not available, show a message
+        text(0.5, 0.5, 'Gradient visualization not available', ...
              'HorizontalAlignment', 'center', 'FontSize', 12);
         axis off;
     end
@@ -595,7 +666,11 @@ try
     
     % Add direction indicator - now aligned with car's frame but considering initial rotation
     arrow_length = opts.carLength * 0.6;
-    initial_arrow_angle = car_rotation + delta(1); % Initial steering angle plus car rotation
+    if size(traj, 1) >= 3
+        initial_arrow_angle = car_rotation + delta(1); % Initial steering angle plus car rotation
+    else
+        initial_arrow_angle = car_rotation; % For 2D model, no steering angle
+    end
     h_direction = quiver(0, 0, arrow_length * cos(initial_arrow_angle), arrow_length * sin(initial_arrow_angle), 0, 'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
 
     % Set up axes properties
@@ -679,6 +754,7 @@ try
         'h_path', h_full_path, ...
         'visible_grid_size_with_margin', visible_grid_size_with_margin, ...
         'is_3d_brs', is_3d_brs, ...
+        'is_2d_brs', is_2d_brs, ...
         'time_display', time_display, ...
         'left_panel', left_panel, ...
         'car_outline', car_outline, ...
@@ -686,20 +762,26 @@ try
         'velocity_color', velocity_color, ...
         'isBRS', opts.isBRS, ...
         'final_text', final_text, ...
-        'data_brs', data_brs ...
+        'data_brs', data_brs, ...
+        'gradient_type', gradient_type ...
         ); % Store BRS data for updating
     
-    % Store steering visualization data if available
-    if steering_vis_enabled
-        userData.steering_vis_enabled = true;
+    % Store gradient visualization data if available
+    if gradient_vis_enabled
+        userData.gradient_vis_enabled = true;
         userData.gradient_vis = gradient_vis;
         userData.h_traj_marker = h_traj_marker;
-        userData.delta_gradient = delta_gradient;
+        userData.control_gradients = control_gradients;
         userData.g = g;
         userData.middle_panel = middle_panel;
         userData.h_brs_contour = h_brs_contour;  % Store BRS contour handle
+        userData.gradient_component = gradient_component;
+        
+        if is_3d_brs
+            userData.delta_gradient = control_gradients; % For 3D case
+        end
     else
-        userData.steering_vis_enabled = false;
+        userData.gradient_vis_enabled = false;
     end
     
     % Store the userData in the figure for access by callbacks
@@ -880,10 +962,16 @@ function userData = updateVisualization(idx, userData)
     current_time = userData.traj_tau(idx);
     current_gamma = userData.gamma(idx);
     current_beta = userData.beta(idx);
-    current_delta = userData.delta(idx);
     current_psi = userData.psi(idx);
     current_x = userData.x(idx);
     current_y = userData.y(idx);
+    
+    % Handle steering angle (may not exist for 2D model)
+    if size(userData.traj, 1) >= 3
+        current_delta = userData.delta(idx);
+    else
+        current_delta = 0; % Default for 2D model
+    end
     
     % Update time display
     set(userData.time_display, 'String', sprintf('Time: %.2f s', current_time));
@@ -904,44 +992,55 @@ function userData = updateVisualization(idx, userData)
         end
     end
     
-    % Update steering gradient visualization
-    if userData.steering_vis_enabled
-        % Find closest slice to current steering angle
-        [~, delta_idx] = min(abs(userData.g.xs{3}(1,1,:) - current_delta));
-        
-        % Extract the steering gradient at the current slice
-        delta_gradient = squeeze(userData.delta_gradient(:,:,delta_idx));
-        
-        % Update visualization
-        set(userData.gradient_vis, 'CData', delta_gradient);
-        
-        % Update trajectory marker position
-        set(userData.h_traj_marker, 'XData', current_beta*180/pi, 'YData', current_gamma*180/pi);
-        
-        % Update the title with current steering angle
-        title(userData.middle_panel, sprintf('Steering Gradient at δ = %.1f°', current_delta*180/pi), 'FontSize', 14);
-        
-        % Extract current BRS slice and update the contour
-        if isfield(userData, 'data_brs')
-            % Get grid values in degrees
-            xs1_deg = userData.g.xs{1}(:,:,1) * 180/pi;  % yaw rate
-            xs2_deg = userData.g.xs{2}(:,:,1) * 180/pi;  % sideslip angle
+    % Update gradient visualization
+    if userData.gradient_vis_enabled
+        if userData.is_3d_brs
+            % 3D case: Find closest slice to current steering angle
+            [~, delta_idx] = min(abs(userData.g.xs{3}(1,1,:) - current_delta));
             
-            % Get BRS slice at current steering angle
-            value_slice = squeeze(userData.data_brs(:,:,delta_idx));
+            % Extract the steering gradient at the current slice
+            delta_gradient = squeeze(userData.control_gradients(:,:,delta_idx));
             
-            % Delete old contour and create new one
-            delete(userData.h_brs_contour);
+            % Update visualization
+            set(userData.gradient_vis, 'CData', delta_gradient);
             
-            % Set current axes and draw new contour
-            axes(userData.middle_panel);
-            [~, userData.h_brs_contour] = contour(xs2_deg, xs1_deg, value_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
-        end
-        
-        % Update colormap scaling for better visualization
-        max_grad = max(abs(delta_gradient(:)));
-        if max_grad > 0
-            clim(userData.middle_panel, [-max_grad, max_grad]);
+            % Update trajectory marker position
+            set(userData.h_traj_marker, 'XData', current_beta*180/pi, 'YData', current_gamma*180/pi);
+            
+            % Update the title with current steering angle
+            title(userData.middle_panel, sprintf('Steering Gradient at \delta = %.1f°', current_delta*180/pi), 'FontSize', 14);
+            
+            % Extract current BRS slice and update the contour
+            if isfield(userData, 'data_brs')
+                % Get grid values in degrees
+                xs1_deg = userData.g.xs{1}(:,:,1) * 180/pi;  % yaw rate
+                xs2_deg = userData.g.xs{2}(:,:,1) * 180/pi;  % sideslip angle
+                
+                % Get BRS slice at current steering angle
+                value_slice = squeeze(userData.data_brs(:,:,delta_idx));
+                
+                % Delete old contour and create new one
+                delete(userData.h_brs_contour);
+                
+                % Set current axes and draw new contour
+                axes(userData.middle_panel);
+                [~, userData.h_brs_contour] = contour(xs2_deg, xs1_deg, value_slice, [0 0], 'LineWidth', 2, 'Color', 'k');
+            end
+            
+            % Update colormap scaling for better visualization
+            max_grad = max(abs(delta_gradient(:)));
+            if max_grad > 0
+                clim(userData.middle_panel, [-max_grad, max_grad]);
+            end
+        else
+            % 2D case: Update trajectory marker position only (gradient field is static)
+            set(userData.h_traj_marker, 'XData', current_beta*180/pi, 'YData', current_gamma*180/pi);
+            
+            % Update colormap scaling for better visualization
+            max_grad = max(abs(userData.control_gradients(:)));
+            if max_grad > 0
+                clim(userData.middle_panel, [-max_grad, max_grad]);
+            end
         end
     end
     
@@ -1010,46 +1109,52 @@ function userData = updateVisualization(idx, userData)
         fr_wheel_x, fr_wheel_y
     ];
     
-    % 4. Apply steering angle to front wheels
-    % Calculate the center of front left wheel
-    fl_center_x = fl_wheel_x + wheel_length/2;
-    fl_center_y = fl_wheel_y - wheel_width/2;
-    
-    % Calculate the center of front right wheel
-    fr_center_x = fr_wheel_x + wheel_length/2;
-    fr_center_y = fr_wheel_y - wheel_width/2;
-    
-    % Steer front wheels (rotate around their centers)
-    % Front left wheel
-    rotated_fl = zeros(size(front_left_wheel));
-    for i = 1:size(front_left_wheel, 1)
-        % Calculate offset from center
-        x_offset = front_left_wheel(i,1) - fl_center_x;
-        y_offset = front_left_wheel(i,2) - fl_center_y;
+    % 4. Apply steering angle to front wheels (only for 3D model)
+    if userData.is_3d_brs
+        % Calculate the center of front left wheel
+        fl_center_x = fl_wheel_x + wheel_length/2;
+        fl_center_y = fl_wheel_y - wheel_width/2;
         
-        % Rotate by steering angle
-        x_rotated = x_offset * cos(-current_delta) - y_offset * sin(-current_delta);
-        y_rotated = x_offset * sin(-current_delta) + y_offset * cos(-current_delta);
+        % Calculate the center of front right wheel
+        fr_center_x = fr_wheel_x + wheel_length/2;
+        fr_center_y = fr_wheel_y - wheel_width/2;
         
-        % Move back to position relative to center
-        rotated_fl(i,1) = fl_center_x + x_rotated;
-        rotated_fl(i,2) = fl_center_y + y_rotated;
-    end
-    
-    % Front right wheel
-    rotated_fr = zeros(size(front_right_wheel));
-    for i = 1:size(front_right_wheel, 1)
-        % Calculate offset from center
-        x_offset = front_right_wheel(i,1) - fr_center_x;
-        y_offset = front_right_wheel(i,2) - fr_center_y;
+        % Steer front wheels (rotate around their centers)
+        % Front left wheel
+        rotated_fl = zeros(size(front_left_wheel));
+        for i = 1:size(front_left_wheel, 1)
+            % Calculate offset from center
+            x_offset = front_left_wheel(i,1) - fl_center_x;
+            y_offset = front_left_wheel(i,2) - fl_center_y;
+            
+            % Rotate by steering angle
+            x_rotated = x_offset * cos(-current_delta) - y_offset * sin(-current_delta);
+            y_rotated = x_offset * sin(-current_delta) + y_offset * cos(-current_delta);
+            
+            % Move back to position relative to center
+            rotated_fl(i,1) = fl_center_x + x_rotated;
+            rotated_fl(i,2) = fl_center_y + y_rotated;
+        end
         
-        % Rotate by steering angle
-        x_rotated = x_offset * cos(-current_delta) - y_offset * sin(-current_delta);
-        y_rotated = x_offset * sin(-current_delta) + y_offset * cos(-current_delta);
-        
-        % Move back to position relative to center
-        rotated_fr(i,1) = fr_center_x + x_rotated;
-        rotated_fr(i,2) = fr_center_y + y_rotated;
+        % Front right wheel
+        rotated_fr = zeros(size(front_right_wheel));
+        for i = 1:size(front_right_wheel, 1)
+            % Calculate offset from center
+            x_offset = front_right_wheel(i,1) - fr_center_x;
+            y_offset = front_right_wheel(i,2) - fr_center_y;
+            
+            % Rotate by steering angle
+            x_rotated = x_offset * cos(-current_delta) - y_offset * sin(-current_delta);
+            y_rotated = x_offset * sin(-current_delta) + y_offset * cos(-current_delta);
+            
+            % Move back to position relative to center
+            rotated_fr(i,1) = fr_center_x + x_rotated;
+            rotated_fr(i,2) = fr_center_y + y_rotated;
+        end
+    else
+        % For 2D model, no steering, so use front wheels as-is
+        rotated_fl = front_left_wheel;
+        rotated_fr = front_right_wheel;
     end
     
     % 5. Apply car heading (psi) rotation to everything
@@ -1126,7 +1231,11 @@ function userData = updateVisualization(idx, userData)
     
     % 8. Update direction indicator (steering direction arrow)
     arrow_length = userData.arrow_length;
-    arrow_angle = current_psi - current_delta;
+    if userData.is_3d_brs
+        arrow_angle = current_psi - current_delta;
+    else
+        arrow_angle = current_psi; % For 2D model, no steering angle
+    end
     set(userData.h_direction, 'XData', current_x, 'YData', current_y, ...
                    'UData', arrow_length * cos(arrow_angle), ...
                    'VData', arrow_length * sin(arrow_angle));

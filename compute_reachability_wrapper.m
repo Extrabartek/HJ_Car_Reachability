@@ -47,7 +47,7 @@ dubins_drange = {[0;0;0], [0;0;0]}; % Disturbance range
 % - If modelType = 'bicycle' and controlType = 'dv': Max steering rates [deg/s]
 % - If modelType = 'doubleInt': Acceleration limits [m/s²]
 % - If modelType = 'dubinsCar': Turning rate limits [deg/s]
-control_limits = [10000];       % Will be converted to radians for 'dv' and 'dubinsCar'
+control_limits = [1];       % Will be converted to radians for 'dv' and 'dubinsCar'
 
 %% Time parameters
 tMax = 1.00;                  % Maximum simulation time [s]
