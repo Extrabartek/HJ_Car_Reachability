@@ -293,14 +293,14 @@ try
         % Fallback to 2D visualization if BRS is only 2D
         % Plot BRS boundary
         if opts.isBRS
-            [C_brs, h_brs] = contour(g.xs{2}, g.xs{1}, data_brs, [0 0], 'b-', 'LineWidth', 2);
+            [C_brs, h_brs] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_brs, [0 0], 'b-', 'LineWidth', 2);
         else
-            [C_brs, h_brs] = contour(g.xs{2}, g.xs{1}, data_brs, [0 0], 'r-', 'LineWidth', 2);
+            [C_brs, h_brs] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_brs, [0 0], 'r-', 'LineWidth', 2);
         end
         hold on;
 
         % Plot target set
-        [C_target, h_target] = contour(g.xs{2}, g.xs{1}, data0, [0 0], 'g-', 'LineWidth', 2);
+        [C_target, h_target] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data0, [0 0], 'g-', 'LineWidth', 2);
 
         % Plot full trajectory with color based on trajectory type
         h_traj = plot(traj(2,:) * 180/pi, traj(1,:) * 180/pi, '-', 'LineWidth', 1.5, 'Color', traj_color);

@@ -28,7 +28,7 @@ main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Re
 %% Reachability result selection
 % Path to the reachability results folder
 % brs_folder = fullfile(main_results_folder, 'dubinscar_brs_results_20250516_153839_v1_turn57-57');
-brs_folder = fullfile(main_results_folder, 'bicycle_brs_results_20250527_154901_vx20-20_dvmax30-30');
+brs_folder = fullfile(main_results_folder, 'bicycle_brs_results_20250528_154009_vx20-20_mz10000-10000');
 
 % Optional: Path to FRS results folder - required for FRS trajectory visualization
 frs_folder = fullfile(main_results_folder, 'steered_frs_results_20250501_103930_vx20-20_dvmax40-40');
@@ -42,7 +42,7 @@ trajectory_type = 'brs';  % Choose 'brs' or 'frs'
 visualize_reachable_sets = true;  % Set to true to visualize reachable sets
 visualize_trajectory = true;      % Set to true to visualize trajectory
 save_plots = false;               % Set to true to save visualization figures
-save_video = true;               % Set to true to save trajectory video
+save_video = false;               % Set to true to save trajectory video
 video_file = 'trajectory1.avi';    % Video filename for trajectory visualization
 plot_types = {};  % Visualization types for reachable sets
 
@@ -57,7 +57,7 @@ trajectory_file = 'trajectory_data.mat';  % For loading/saving trajectory data
 % - Double Integrator: [position; velocity]
 % - Dubins Car:       [x; y; theta] (positvision and heading) in meters and radians [2, 2, -pi * 5/6]
 % xinit = [2, 2, -pi * 5/6]; 
-xinit = [deg2rad(25), deg2rad(20), deg2rad(0)];
+xinit = [deg2rad(5), deg2rad(-25)];
 
 % Trajectory computation method - options: 'arrival', 'gradient', or 'legacy'
 % 'arrival'  - Uses time-of-arrival function for guidance (fastest)
@@ -856,8 +856,8 @@ if visualize_trajectory
             else
                 % For 2D model
                 hold on;
-                [~, h1] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data_value_function, [0, 0], 'LineWidth', 2, 'Color', 'k');
-                [~, h2] = contour(g.xs{2}*180/pi, g.xs{1}*180/pi, data0, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
+                [~, h1] = contour(g.xs{2}*(180/pi), g.xs{1}*(180/pi), data_value_function, [0, 0], 'LineWidth', 2, 'Color', 'k');
+                [~, h2] = contour(g.xs{2}*(180/pi), g.xs{1}*(180/pi), data0, [0, 0], 'LineWidth', 2, 'Color', 'g', 'LineStyle', '--');
                 
                 % Also plot BRS data if this is an FRS trajectory and we have BRS data
                 if strcmp(trajectory_type, 'frs') && ~isempty(data_complement)

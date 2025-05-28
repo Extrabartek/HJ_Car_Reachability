@@ -25,7 +25,7 @@ save_plots = false;          % Set to true to save visualization figures
 %% Model and computation type
 modelType = 'bicycle';      % Options: 'bicycle', 'doubleInt', 'dubinsCar'
 direction = 'backward';      % Options: 'backward' (BRS) or 'forward' (FRS)
-controlType = 'dv';          % Options: 'mz' (yaw moment) or 'dv' (steering rate)
+controlType = 'mz';          % Options: 'mz' (yaw moment) or 'dv' (steering rate)
                              % (only used for bicycle model)
 
 %% Model-specific parameters
@@ -47,26 +47,26 @@ dubins_drange = {[0;0;0], [0;0;0]}; % Disturbance range
 % - If modelType = 'bicycle' and controlType = 'dv': Max steering rates [deg/s]
 % - If modelType = 'doubleInt': Acceleration limits [m/s²]
 % - If modelType = 'dubinsCar': Turning rate limits [deg/s]
-control_limits = [30];       % Will be converted to radians for 'dv' and 'dubinsCar'
+control_limits = [10000];       % Will be converted to radians for 'dv' and 'dubinsCar'
 
 %% Time parameters
-tMax = 0.75;                  % Maximum simulation time [s]
+tMax = 1.00;                  % Maximum simulation time [s]
 dt = 0.001;                   % Time step [s]
 
 %% Grid parameters
 % Grid size: Number of grid points in each dimension
-gridSize = [101, 101, 101];               % Empty = use defaults based on model type
+gridSize = [301, 301];               % Empty = use defaults based on model type
                              % Default for 'bicycle'+'mz': [71, 71]
                              % Default for 'bicycle'+'dv': [51, 51, 51]
                              % Default for 'doubleInt': [101, 101]
                              % Default for 'dubinsCar': [51, 51, 51]
 
 % Grid limits in degrees (will be converted to radians for angles)
-gridMin_deg = [-200, -40, -25];            % Empty = use defaults based on model type
-gridMax_deg = [200, 40, 25];            % Empty = use defaults based on model type
+gridMin_deg = [-500, -80];            % Empty = use defaults based on model type
+gridMax_deg = [500, 80];            % Empty = use defaults based on model type
 
 % Target set size in degrees (will be converted to radians for angles)
-targetSize_deg = [20, 3, 4];         % Empty = use defaults based on model type
+targetSize_deg = [20, 3];         % Empty = use defaults based on model type
 
 %% Advanced parameters
 uMode = '';                  % Control strategy: 'min', 'max', or '' (empty = use default)
