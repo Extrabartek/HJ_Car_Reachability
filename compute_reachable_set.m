@@ -402,7 +402,7 @@ for v_idx = 1:length(velocity_range)
         if strcmp(opts.direction, 'forward')
             schemeData.tMode = 'forward';
         end
-        
+
         % Setup visualization options
         if opts.visualize
             HJIextraArgs.visualize.valueSet = true;

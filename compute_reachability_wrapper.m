@@ -12,6 +12,8 @@ function compute_reachability_wrapper()
 
 clear; clc;
 
+profile on;
+
 %% Configuration Parameters - MODIFY THESE VALUES
 % ---------------------------------------------------
 
@@ -45,23 +47,23 @@ dubins_drange = {[0;0;0], [0;0;0]}; % Disturbance range
 % - If modelType = 'bicycle' and controlType = 'dv': Max steering rates [deg/s]
 % - If modelType = 'doubleInt': Acceleration limits [m/s²]
 % - If modelType = 'dubinsCar': Turning rate limits [deg/s]
-control_limits = [40];       % Will be converted to radians for 'dv' and 'dubinsCar'
+control_limits = [30];       % Will be converted to radians for 'dv' and 'dubinsCar'
 
 %% Time parameters
-tMax = 0.5;                  % Maximum simulation time [s]
+tMax = 0.75;                  % Maximum simulation time [s]
 dt = 0.001;                   % Time step [s]
 
 %% Grid parameters
 % Grid size: Number of grid points in each dimension
-gridSize = [121, 121, 91];               % Empty = use defaults based on model type
+gridSize = [101, 101, 101];               % Empty = use defaults based on model type
                              % Default for 'bicycle'+'mz': [71, 71]
                              % Default for 'bicycle'+'dv': [51, 51, 51]
                              % Default for 'doubleInt': [101, 101]
                              % Default for 'dubinsCar': [51, 51, 51]
 
 % Grid limits in degrees (will be converted to radians for angles)
-gridMin_deg = [-200, -30, -25];            % Empty = use defaults based on model type
-gridMax_deg = [200, 30, 25];            % Empty = use defaults based on model type
+gridMin_deg = [-200, -40, -25];            % Empty = use defaults based on model type
+gridMax_deg = [200, 40, 25];            % Empty = use defaults based on model type
 
 % Target set size in degrees (will be converted to radians for angles)
 targetSize_deg = [20, 3, 4];         % Empty = use defaults based on model type
@@ -71,7 +73,7 @@ uMode = '';                  % Control strategy: 'min', 'max', or '' (empty = us
                              % Default for 'backward': 'min'
                              % Default for 'forward': 'max'
 
-accuracy = 'veryHigh';           % Numerical accuracy: 'low', 'medium', 'high', 'veryhigh'
+accuracy = 'veryHigh';           % Numerical accuracy: 'low', 'medium', 'high', 'veryhigh'               
 
 %% Path to existing results folder (only used if generate_results = false)
 main_results_folder = '/home/bartosz/Documents/master_thesis/code_base/HJ_Car_Reachability/results/';
@@ -406,6 +408,12 @@ if ~isempty(result_folder)
     fprintf('Results saved to: %s\n', result_folder);
 end
 
+    profile off;
+    % fprintf("Ending profiling!");
+    % p = profile('info');
+    % profsave(p, sprintf('profile_%s', datestr(now, 'yyyy-mm-dd_HH-MM-SS')))
+    % fprintf("Profiling saved.");
+
 end
 
 %% Simple visualization functions for Double Integrator and Dubins Car
@@ -496,4 +504,5 @@ function visualize_dubins_car_simple(result_folder)
     else
         fprintf('No combined results file found for visualization.\n');
     end
+
 end
