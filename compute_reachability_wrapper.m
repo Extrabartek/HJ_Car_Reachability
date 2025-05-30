@@ -31,7 +31,7 @@ controlType = 'mz';          % Options: 'mz' (yaw moment) or 'dv' (steering rate
 %% Model-specific parameters
 
 % Bicycle model parameters
-velocities = [20];           % Vehicle velocities to test [m/s] (for bicycle model)
+velocities = 10:10:30;           % Vehicle velocities to test [m/s] (for bicycle model)
 
 % Double Integrator parameters (if modelType = 'doubleInt')
 doubleint_dims = 1:2;        % Dimensions to use
@@ -47,7 +47,7 @@ dubins_drange = {[0;0;0], [0;0;0]}; % Disturbance range
 % - If modelType = 'bicycle' and controlType = 'dv': Max steering rates [deg/s]
 % - If modelType = 'doubleInt': Acceleration limits [m/s²]
 % - If modelType = 'dubinsCar': Turning rate limits [deg/s]
-control_limits = [1];       % Will be converted to radians for 'dv' and 'dubinsCar'
+control_limits = [1, 2500, 5000, 10000]; % Will be converted to radians for 'dv' and 'dubinsCar'
 
 %% Time parameters
 tMax = 1.00;                  % Maximum simulation time [s]
@@ -55,7 +55,7 @@ dt = 0.001;                   % Time step [s]
 
 %% Grid parameters
 % Grid size: Number of grid points in each dimension
-gridSize = [301, 301];               % Empty = use defaults based on model type
+gridSize = [251, 251];               % Empty = use defaults based on model type
                              % Default for 'bicycle'+'mz': [71, 71]
                              % Default for 'bicycle'+'dv': [51, 51, 51]
                              % Default for 'doubleInt': [101, 101]
@@ -66,7 +66,7 @@ gridMin_deg = [-500, -80];            % Empty = use defaults based on model type
 gridMax_deg = [500, 80];            % Empty = use defaults based on model type
 
 % Target set size in degrees (will be converted to radians for angles)
-targetSize_deg = [20, 3];         % Empty = use defaults based on model type
+targetSize_deg = [40, 9];         % Empty = use defaults based on model type
 
 %% Advanced parameters
 uMode = '';                  % Control strategy: 'min', 'max', or '' (empty = use default)
